@@ -1,0 +1,565 @@
+<!DOCTYPE html><html><head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="Orbit chat for social media chat system">
+  <!-- Force Flutter to use HTML renderer to ensure platform views (Agora video) render correctly on web -->
+  <meta name="flutter-web-renderer" content="html">
+  <meta name="flutter-web-auto-detect" content="false">
+
+  <!-- Google Maps API key for web (used by google_maps_flutter_web) -->
+  <meta name="google_maps_api_key" content="AIzaSyBGhJMHg8_3OqsJy2J0DGLnEtz09yaK5Fc">
+  <meta name="gmp-key" content="AIzaSyBGhJMHg8_3OqsJy2J0DGLnEtz09yaK5Fc">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Orbit chat">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png">
+
+  <title>Orbit chat</title>
+  <link rel="manifest" href="manifest.json">
+  <script src="https://cdn.auth0.com/js/auth0-spa-js/2.0/auth0-spa-js.production.js"></script>
+  <!-- Firebase JS SDK for Phone Auth on web -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script>
+    // Firebase configuration for web
+    const firebaseConfig = {
+      apiKey: "AIzaSyBajx0oj_JPE3hEZ4DvTh1PmZvRptUe0Xo",
+      authDomain: "orbit-fc910.firebaseapp.com",
+      projectId: "orbit-fc910",
+      storageBucket: "orbit-fc910.firebasestorage.app",
+      messagingSenderId: "507943861710",
+      appId: "1:507943861710:web:d27274ff625b3592733f9f",
+      measurementId: "G-XJ9SK9FHJP"
+    };
+    // Initialize Firebase for web
+    if (typeof firebase !== 'undefined' && !firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+      console.log('Firebase initialized for web');
+    }
+    // Make Firebase available globally for Flutter
+    window.firebaseAuthWeb = firebase.auth();
+  </script>
+  <!-- Explicitly load Google Maps JavaScript API so google.maps is defined for google_maps_flutter_web
+       Include the Advanced Markers library (marker) to prepare for migration off deprecated google.maps.Marker. -->
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBGhJMHg8_3OqsJy2J0DGLnEtz09yaK5Fc&libraries=places,marker" async defer></script>
+  <script>
+    // Ensure Auth0 is available before Flutter loads
+    window.auth0Ready = false;
+    window.addEventListener('load', function() {
+      if (window.auth0 && window.auth0.createAuth0Client) {
+        window.auth0Ready = true;
+        console.log('Auth0 SPA JS loaded successfully');
+      } else {
+        console.error('Auth0 SPA JS failed to load');
+      }
+    });
+  </script>
+  <script>
+    // In development (localhost/127.0.0.1), unregister service workers and clear caches.
+    // This prevents Safari from serving stale cached JS bundles that can cause startup crashes.
+    (function(){
+      try {
+        var host = (location.hostname || '').toLowerCase();
+        var isDev = host === 'localhost' || host === '127.0.0.1';
+        if (isDev && 'serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function(regs){
+            var had = regs && regs.length > 0;
+            regs && regs.forEach(function(r){ r && r.unregister && r.unregister(); });
+            if (had) {
+              // Give the browser a moment to settle, then reload once to pick fresh assets
+              setTimeout(function(){ try { location.reload(); } catch(_) {} }, 200);
+            }
+          });
+          if (window.caches && caches.keys) {
+            caches.keys().then(function(keys){ keys && keys.forEach(function(k){ caches.delete(k); }); });
+          }
+        }
+      } catch(e) { /* ignore */ }
+    })();
+  </script>
+  
+  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
+  
+  
+  
+  
+  <style id="splash-screen-style">
+    /* Platform views (Agora video containers). Keep very low z-index and disable pointer events
+       so Flutter UI overlays (names/controls) appear above and remain clickable. */
+    flt-platform-view, .flt-platform-view, .platform-view, .flt-platform-element {
+      z-index: 0 !important;
+      background: transparent !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      pointer-events: none !important;
+    }
+    /* Make Agora web <video> fill its container and cover */
+    div[id^="agora_rtc_engine/AgoraSurfaceView_"] video {
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover !important;
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+    }
+    /* Ensure the Agora Surface container fills its slot and never overlays Flutter UI */
+    div[id^="agora_rtc_engine/AgoraSurfaceView_"] {
+      z-index: 0 !important;
+      pointer-events: none !important;
+      background: transparent !important;
+      width: 100% !important;
+      height: 100% !important;
+      display: block !important;
+      position: relative !important;
+    }
+    /* If Agora uses canvas internally, ensure it fills as well */
+    div[id^="agora_rtc_engine/AgoraSurfaceView_"] canvas {
+      width: 100% !important;
+      height: 100% !important;
+      display: block !important;
+    }
+    html {
+      height: 100%
+    }
+
+    body {
+      margin: 0;
+      min-height: 100%;
+      background-color: #EEEDE7;
+          background-size: 100% 100%;
+    }
+
+    .center {
+      margin: 0;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      -ms-transform: translate(-50%, -50%);
+      transform: translate(-50%, -50%);
+    }
+
+    .contain {
+      display:block;
+      width:100%; height:100%;
+      object-fit: contain;
+    }
+
+    .stretch {
+      display:block;
+      width:100%; height:100%;
+    }
+
+    .cover {
+      display:block;
+      width:100%; height:100%;
+      object-fit: cover;
+    }
+
+    .bottom {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      -ms-transform: translate(-50%, 0);
+      transform: translate(-50%, 0);
+    }
+
+    .bottomLeft {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+    }
+
+    .bottomRight {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+    }
+  </style>
+  <!-- Load Iris UMD from plugin assets so Flutter Agora Web can initialize -->
+  <script src="assets/packages/agora_rtc_engine/assets/iris_umd.min.js"></script>
+  <!-- Fallback for older plugin path -->
+  <script src="assets/packages/iris_method_channel/assets/iris_umd.min.js"></script>
+  <!-- Agora Web SDK (NG) for shadow fallback subscription on web -->
+  <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.19.2.js"></script>
+  <script>
+    // Minimal shadow client to force remote subscription and playback on web if Flutter wrapper misses it
+    (function(){
+      window.agoraShadowJoin = async function(appId, channel, token, uid, publishLocal){
+        try {
+          if (!window.AgoraRTC) { console.warn('[Shadow] AgoraRTC NG not loaded'); return; }
+          var selector = 'div[id^="agora_rtc_engine/AgoraSurfaceView_"]';
+          function pickLargestSurface(){
+            var list = document.querySelectorAll(selector) || [];
+            var arr = Array.prototype.slice.call(list).filter(function(el){
+              return el && el.clientWidth && el.clientHeight && el.offsetParent !== null;
+            });
+            if (!arr.length) return document.body;
+            arr.sort(function(a,b){
+              var aa = (a.clientWidth||0)*(a.clientHeight||0);
+              var bb = (b.clientWidth||0)*(b.clientHeight||0);
+              return bb - aa;
+            });
+            return arr[0] || document.body;
+          }
+          function ensureOverlay(){
+            var preferred = document.getElementById('agora-shadow-host') || document.getElementById('agora-shadow-root');
+            var container = preferred || pickLargestSurface();
+            // If an overlay exists under a different container, move it
+            var existing = document.querySelector('.agora-shadow-overlay');
+            if (existing && existing.parentElement !== container) {
+              try { existing.parentElement && existing.parentElement.removeChild(existing); } catch(e) {}
+              existing = null;
+            }
+            var el = existing;
+            if (!el) {
+              el = document.createElement('div');
+              el.className = 'agora-shadow-overlay';
+              el.style.cssText = 'position:absolute; inset:0; width:100%; height:100%; z-index:0; pointer-events:none; background: transparent;';
+              container.appendChild(el);
+            }
+            return el;
+          }
+          var s = window.__agoraShadow = window.__agoraShadow || {};
+          if (!s.client){
+            s.client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+            s.joined = false;
+            s.joining = false;
+            s._listeners = false;
+            s.localVideoTrack = null;
+            s._repositionTimer = null;
+          }
+          var c = s.client;
+          if (!s._listeners) {
+            c.on('user-published', async function(user, mediaType){
+              try {
+                await c.subscribe(user, mediaType);
+                if (mediaType === 'video') {
+                  var overlay = ensureOverlay();
+                  user.videoTrack && user.videoTrack.play(overlay);
+                  console.log('[Shadow] playing remote video via Web SDK');
+                  // Kick a short reposition loop to move overlay to the largest surface soon after DOM settles
+                  try {
+                    if (s._repositionTimer) { clearInterval(s._repositionTimer); s._repositionTimer = null; }
+                  } catch(e) {}
+                  var ticks = 0;
+                  s._repositionTimer = setInterval(function(){
+                    try {
+                      var ov = ensureOverlay();
+                      // Re-play all known remote tracks to the latest overlay
+                      c.remoteUsers && c.remoteUsers.forEach(function(u){ if (u.videoTrack) { u.videoTrack.play(ov); } });
+                    } catch(e) {}
+                    if (++ticks > 8) { try { clearInterval(s._repositionTimer); s._repositionTimer = null; } catch(e) {} }
+                  }, 400);
+                }
+                if (mediaType === 'audio') {
+                  user.audioTrack && user.audioTrack.play();
+                }
+              } catch(e) { console.error('[Shadow] subscribe error', e); }
+            });
+            c.on('user-unpublished', function(user){
+              var overlay = document.querySelector('.agora-shadow-overlay');
+              if (overlay) { overlay.innerHTML = ''; }
+            });
+            s._listeners = true;
+          }
+          if (s.joined || s.joining) {
+            // Already connecting/connected: ensure overlay and try to play any existing remote tracks
+            ensureOverlay();
+            c.remoteUsers && c.remoteUsers.forEach(function(u){
+              if (u.videoTrack) {
+                var overlay = ensureOverlay();
+                u.videoTrack.play(overlay);
+                console.log('[Shadow] playing existing remote video');
+              }
+              if (u.audioTrack) { u.audioTrack.play(); }
+            });
+            return;
+          }
+          s.joining = true;
+          await c.join(appId, channel, token || null, uid || null);
+          s.joined = true;
+          s.joining = false;
+          console.log('[Shadow] joined channel as shadow client');
+          // If requested, publish local camera and microphone so host has full A/V on web
+          if (publishLocal && !s.localVideoTrack) {
+            try {
+              s.localVideoTrack = await AgoraRTC.createCameraVideoTrack({ encoderConfig: '480p' });
+              try {
+                s.localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+              } catch (e) {
+                console.warn('[Shadow] microphone creation failed', e);
+                s.localAudioTrack = null;
+              }
+              var tracks = [];
+              if (s.localVideoTrack) tracks.push(s.localVideoTrack);
+              if (s.localAudioTrack) tracks.push(s.localAudioTrack);
+              if (tracks.length) {
+                await c.publish(tracks);
+                console.log('[Shadow] published local tracks via Web SDK', tracks.map(function(t){return t && t.getTrackLabel && t.getTrackLabel();}));
+              }
+            } catch (e) {
+              console.warn('[Shadow] failed publishing local tracks', e);
+            }
+          }
+          // After join, immediately check existing remote users
+          c.remoteUsers && c.remoteUsers.forEach(function(u){
+            if (u.videoTrack) {
+              var overlay = ensureOverlay();
+              u.videoTrack.play(overlay);
+              console.log('[Shadow] playing existing remote video');
+            }
+            if (u.audioTrack) { u.audioTrack.play(); }
+          });
+          // Start a short reposition loop post-join as well
+          try { if (s._repositionTimer) { clearInterval(s._repositionTimer); s._repositionTimer = null; } } catch(e) {}
+          var joinTicks = 0;
+          s._repositionTimer = setInterval(function(){
+            try {
+              var ov = ensureOverlay();
+              c.remoteUsers && c.remoteUsers.forEach(function(u){ if (u.videoTrack) { u.videoTrack.play(ov); } });
+            } catch(e) {}
+            if (++joinTicks > 10) { try { clearInterval(s._repositionTimer); s._repositionTimer = null; } catch(e) {} }
+          }, 500);
+        } catch(e) { console.error('[Shadow] join error', e); }
+      };
+      window.agoraShadowLeave = async function(){
+        try {
+          var s = window.__agoraShadow;
+          if (s && s.client && s.joined) {
+            try {
+              if (s._repositionTimer) { clearInterval(s._repositionTimer); s._repositionTimer = null; }
+              var unpub = [];
+              if (s.localVideoTrack) { unpub.push(s.localVideoTrack); }
+              if (s.localAudioTrack) { unpub.push(s.localAudioTrack); }
+              if (unpub.length) {
+                try { await s.client.unpublish(unpub); } catch(e) { console.warn('[Shadow] unpublish error', e); }
+              }
+              if (s.localVideoTrack) {
+                try { s.localVideoTrack.stop(); } catch(_e) {}
+                try { s.localVideoTrack.close && s.localVideoTrack.close(); } catch(_e) {}
+                s.localVideoTrack = null;
+              }
+              if (s.localAudioTrack) {
+                try { s.localAudioTrack.stop(); } catch(_e) {}
+                try { s.localAudioTrack.close && s.localAudioTrack.close(); } catch(_e) {}
+                s.localAudioTrack = null;
+              }
+            } catch (e) { console.warn('[Shadow] cleanup local track error', e); }
+            await s.client.leave();
+            s.joined = false;
+            console.log('[Shadow] left channel');
+          }
+          document.querySelectorAll('.agora-shadow-overlay').forEach(function(n){ n.remove(); });
+        } catch(e) { console.error('[Shadow] leave error', e); }
+      };
+      // Expose manual refresh to re-place overlay onto the largest container and re-play existing tracks
+      window.agoraShadowRefresh = function(){
+        try {
+          var s = window.__agoraShadow;
+          if (!s || !s.client || !s.joined) return;
+          var ov = (function(){
+            var host = document.getElementById('agora-shadow-host') || document.getElementById('agora-shadow-root');
+            if (!host) {
+              var selector = 'div[id^="agora_rtc_engine/AgoraSurfaceView_"]';
+              var list = document.querySelectorAll(selector) || [];
+              var arr = Array.prototype.slice.call(list).filter(function(el){
+                return el && el.clientWidth && el.clientHeight && el.offsetParent !== null;
+              });
+              arr.sort(function(a,b){
+                var aa = (a.clientWidth||0)*(a.clientHeight||0);
+                var bb = (b.clientWidth||0)*(b.clientHeight||0);
+                return bb - aa;
+              });
+              host = arr[0] || document.body;
+            }
+            var ex = document.querySelector('.agora-shadow-overlay');
+            if (ex && ex.parentElement !== host) { try { ex.parentElement && ex.parentElement.removeChild(ex); } catch(e) {} ex = null; }
+            if (!ex) {
+              ex = document.createElement('div');
+              ex.className = 'agora-shadow-overlay';
+              ex.style.cssText = 'position:absolute; inset:0; width:100%; height:100%; z-index:0; pointer-events:none; background: transparent;';
+              host.appendChild(ex);
+            }
+            return ex;
+          })();
+          s.client.remoteUsers && s.client.remoteUsers.forEach(function(u){ if (u.videoTrack) { u.videoTrack.play(ov); } });
+          console.log('[Shadow] refresh overlay and replay remote tracks');
+        } catch(e) { console.warn('[Shadow] refresh error', e); }
+      }
+    })();
+  </script>
+  <script>
+    // Force Agora video elements to be visible and play
+    (function(){
+      function forceAgoraVideoVisible(root){
+        try {
+          var containers = (root || document).querySelectorAll('div[id^="agora_rtc_engine/AgoraSurfaceView_"]');
+          containers.forEach(function(container){
+            try {
+              // Force container visibility
+              container.style.cssText += '; width: 100% !important; height: 100% !important; display: block !important; visibility: visible !important; opacity: 1 !important; background: black !important;';
+              
+              // Find and force video elements
+              var videos = container.querySelectorAll('video');
+              videos.forEach(function(v){
+                try {
+                  v.style.cssText += '; width: 100% !important; height: 100% !important; object-fit: cover !important; display: block !important; visibility: visible !important; opacity: 1 !important;';
+                  v.setAttribute('autoplay','true');
+                  v.setAttribute('playsinline','true');
+                  v.setAttribute('webkit-playsinline','true');
+                  v.muted = true;
+                  v.controls = false;
+                  if (typeof v.play === 'function') { 
+                    v.play().catch(function(){}); 
+                  }
+                  // Force srcObject if available
+                  if (v.srcObject && v.srcObject.getVideoTracks && v.srcObject.getVideoTracks().length > 0) {
+                    console.log('Agora video has stream, forcing play');
+                    v.play().catch(function(){});
+                  }
+                } catch(e) { console.log('Video force error:', e); }
+              });
+              
+              // Find and force canvas elements
+              var canvases = container.querySelectorAll('canvas');
+              canvases.forEach(function(c){
+                try {
+                  c.style.cssText += '; width: 100% !important; height: 100% !important; display: block !important; visibility: visible !important; opacity: 1 !important;';
+                } catch(e) {}
+              });
+            } catch(e) { console.log('Container force error:', e); }
+          });
+        } catch(e) { console.log('Force error:', e); }
+      }
+      
+      var mo = new MutationObserver(function(muts){
+        muts.forEach(function(m){
+          m.addedNodes && m.addedNodes.forEach(function(n){
+            if (n && n.querySelectorAll) {
+              forceAgoraVideoVisible(n);
+              // Also check if this node itself is an Agora container
+              if (n.id && n.id.indexOf('agora_rtc_engine/AgoraSurfaceView_') === 0) {
+                setTimeout(function(){ forceAgoraVideoVisible(document.body); }, 100);
+              }
+            }
+          });
+        });
+      });
+      mo.observe(document.documentElement || document.body, {childList:true, subtree:true, attributes:true, attributeFilter:['style']});
+      
+      // Run periodically to catch any missed elements
+      setInterval(function(){ forceAgoraVideoVisible(document.body); }, 1000);
+      
+      document.addEventListener('DOMContentLoaded', function(){ forceAgoraVideoVisible(document.body); });
+      forceAgoraVideoVisible(document.body);
+    })();
+  </script>
+  <script>
+    // Provide a fallback Iris mock ONLY if real Iris is not available in any context
+    (function(){
+      function hasRealIris(ctx){
+        return ctx && (
+          typeof ctx.createIrisApiEngine === 'function' ||
+          (ctx.Iris && typeof ctx.Iris.createIrisApiEngine === 'function')
+        );
+      }
+      var contexts = [window, typeof self!== 'undefined'? self: null, typeof globalThis!== 'undefined'? globalThis: null, typeof global!== 'undefined'? global: null];
+      var anyReal = contexts.some(function(c){ return hasRealIris(c || {});});
+      if (!anyReal){
+        var mockEngine = {
+          callApi: function(){ return Promise.resolve({result:0}); },
+          initialize: function(){ return Promise.resolve(); },
+          release: function(){ return Promise.resolve(); }
+        };
+        var createFn = function() {
+          console.warn('[Iris] Using fallback mock engine - real Iris not found');
+          return mockEngine;
+        };
+        // Install fallback in all known contexts
+        contexts.forEach(function(ctx){
+          if (!ctx) return;
+          ctx.createIrisApiEngine = createFn;
+          ctx.Iris = ctx.Iris || {};
+          ctx.Iris.createIrisApiEngine = createFn;
+        });
+      } else {
+        console.log('[Iris] Real Iris engine detected');
+      }
+    })();
+  </script>
+  <script id="splash-screen-script">
+    function removeSplashFromWeb() {
+      var splash = document.getElementById("splash");
+      if (splash && splash.parentNode) {
+        splash.parentNode.removeChild(splash);
+      }
+      var branding = document.getElementById("splash-branding");
+      if (branding && branding.parentNode) {
+        branding.parentNode.removeChild(branding);
+      }
+      if (document && document.body && document.body.style) {
+        document.body.style.background = "transparent";
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="agora-shadow-root" style="position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none;"></div>
+  <picture id="splash">
+      <source srcset="assets/assets/logo.png 1x, assets/assets/logo.png 2x, assets/assets/logo.png 3x, assets/assets/logo.png 4x" media="(prefers-color-scheme: light)">
+      <source srcset="assets/assets/logo.png 1x, assets/assets/logo.png 2x, assets/assets/logo.png 3x, assets/assets/logo.png 4x" media="(prefers-color-scheme: dark)">
+      <img class="center" aria-hidden="true" src="assets/assets/logo.png" alt="">
+  </picture>
+  
+  
+  
+  <script>
+    // Final verification and Flutter override
+    if (typeof window.createIrisApiEngine !== 'function') {
+      console.error('[Iris] CRITICAL: createIrisApiEngine still not found');
+    } else {
+      console.log('[Iris] Final verification: createIrisApiEngine ready');
+    }
+    
+    // Override Flutter's module loader to inject Iris before any imports
+    if (window._flutter && window._flutter.loader) {
+      var originalLoad = window._flutter.loader.load;
+      window._flutter.loader.load = function() {
+        // Ensure Iris is available in all contexts before Flutter modules load
+        var contexts = [window, self, globalThis];
+        contexts.forEach(function(ctx) {
+          if (ctx && typeof ctx.createIrisApiEngine !== 'function') {
+            ctx.createIrisApiEngine = window.createIrisApiEngine;
+            ctx.Iris = ctx.Iris || {};
+            ctx.Iris.createIrisApiEngine = window.createIrisApiEngine;
+          }
+        });
+        return originalLoad.apply(this, arguments);
+      };
+    }
+  </script>
+  <!-- Load Flutter immediately; do not gate on Google Maps availability (fixes Safari splash hang) -->
+  <script src="flutter_bootstrap.js" defer></script>
+
+
+</body></html>

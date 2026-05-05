@@ -1,0 +1,219 @@
+# Uncomment this line to define a global platform for your project
+platform :ios, '14.0'
+
+# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
+  end
+
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_ios_podfile_setup
+
+target 'Runner' do
+  use_frameworks!
+  use_modular_headers!
+
+  pod 'SDWebImage', '5.21.3'
+  pod 'SDWebImageWebPCoder', '0.15.0'
+  pod 'AgoraRtcEngine_iOS/ReplayKit', '4.5.2'
+
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+
+  target 'ShareExtension' do
+    inherit! :search_paths
+    pod "share_handler_ios_models", :path => ".symlinks/plugins/share_handler_ios/ios/Models"
+  end
+
+  target 'BroadcastUploadExtension' do
+    inherit! :search_paths
+    # Links against Agora from parent, doesn't embed
+  end
+end
+
+post_install do |installer|
+  arch = `uname -m`.strip
+  excluded_sim_arch = arch == 'x86_64' ? 'arm64' : nil
+  installer.pods_project.build_configurations.each do |config|
+    if excluded_sim_arch
+      config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = excluded_sim_arch
+    else
+      config.build_settings.delete('EXCLUDED_ARCHS[sdk=iphonesimulator*]')
+    end
+  end
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+
+    # Set minimum iOS deployment target to 14.0
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
+    end
+
+    # Exclude arm64 on simulator to support x86_64 simulators
+    target.build_configurations.each do |config|
+      if excluded_sim_arch
+        config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = excluded_sim_arch
+      else
+        config.build_settings.delete('EXCLUDED_ARCHS[sdk=iphonesimulator*]')
+      end
+    end
+
+    # Strip simulator architectures from Release builds
+    target.build_configurations.each do |config|
+      if config.name == 'Release' || config.name == 'Profile'
+        config.build_settings['EXCLUDED_ARCHS[sdk=iphoneos*]'] = 'x86_64 i386'
+      end
+    end
+
+    # Fix for BroadcastUploadExtension - don't embed frameworks, link only
+    if target.name == 'BroadcastUploadExtension'
+      target.build_configurations.each do |config|
+        config.build_settings['EMBEDDED_CONTENT_CONTAINS_SWIFT'] = 'NO'
+        config.build_settings['ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES'] = 'NO'
+        config.build_settings['LD_RUNPATH_SEARCH_PATHS'] = [
+          '$(inherited)',
+          '@executable_path/Frameworks',
+          '@executable_path/../../Frameworks'
+        ]
+      end
+    end
+
+    # Remove embed frameworks build phase from BroadcastUploadExtension to fix duplicate XCFramework error
+    if target.name == 'BroadcastUploadExtension'
+      target.build_phases.each do |build_phase|
+        if build_phase.is_a?(Xcodeproj::Project::Object::PBXShellScriptBuildPhase) && build_phase.name == '[CP] Embed Pods Frameworks'
+          target.build_phases.delete(build_phase)
+          puts "Removed '[CP] Embed Pods Frameworks' from BroadcastUploadExtension"
+        end
+      end
+    end
+
+    # Add build phase to strip simulator architectures for Release builds
+    if target.name == 'Runner'
+      target.build_configurations.each do |config|
+        if config.name == 'Release' || config.name == 'Profile'
+          # Add a script phase to strip simulator architectures
+          script_phase_name = 'Strip Simulator Architectures from Pods'
+          existing_phase = target.shell_script_build_phases.find { |phase| phase.name == script_phase_name }
+          
+          unless existing_phase
+            phase = target.new_shell_script_build_phase(script_phase_name)
+            phase.shell_script = <<-SCRIPT
+# Strip simulator architectures from frameworks
+if [ "$CONFIGURATION" == "Release" ] || [ "$CONFIGURATION" == "Profile" ]; then
+  echo "Stripping simulator architectures from frameworks..."
+  find "${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}" -name '*.framework' -type d | while read -r framework; do
+    exec_name=$(basename "$framework" .framework)
+    exec_path="$framework/$exec_name"
+    if [ -f "$exec_path" ]; then
+      archs=$(lipo -archs "$exec_path" 2>/dev/null || echo "")
+      if echo "$archs" | grep -qE '(x86_64|i386)'; then
+        echo "Stripping $exec_name (archs: $archs)"
+        # Keep only non-simulator architectures
+        keep_archs=""
+        for arch in $archs; do
+          case "$arch" in
+            x86_64|i386) ;;
+            *) keep_archs="$keep_archs $arch" ;;
+          esac
+        done
+        keep_archs=$(echo "$keep_archs" | xargs)
+        if [ -n "$keep_archs" ]; then
+          lipo -extract $keep_archs "$exec_path" -o "${exec_path}.tmp" && mv "${exec_path}.tmp" "$exec_path"
+          if [ -n "$EXPANDED_CODE_SIGN_IDENTITY" ]; then
+            codesign --force --sign "$EXPANDED_CODE_SIGN_IDENTITY" --preserve-metadata=identifier,entitlements "$exec_path" 2>/dev/null || true
+          fi
+          echo "Stripped $exec_name, new archs: $(lipo -archs "$exec_path" 2>/dev/null)"
+        fi
+      fi
+    fi
+  done
+fi
+            SCRIPT
+            phase.run_only_for_deployment_postprocessing = '0'
+            # Move to end of build phases
+            target.build_phases.move(phase, -1)
+          end
+        end
+      end
+    end
+
+    # Start of the permission_handler configuration
+    target.build_configurations.each do |config|
+#      config.build_settings['ONLY_ACTIVE_ARCH'] = 'YES'
+      # You can enable the permissions needed here. For example to enable camera
+      # permission, just remove the `#` character in front so it looks like this:
+      #
+      # ## dart: PermissionGroup.camera
+      # 'PERMISSION_CAMERA=1'
+      #
+      #  Preprocessor definitions can be found in: https://github.com/Baseflow/flutter-permission-handler/blob/master/permission_handler_apple/ios/Classes/PermissionHandlerEnums.h
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
+        '$(inherited)',
+
+        ## dart: PermissionGroup.calendar
+        # 'PERMISSION_EVENTS=1',
+
+        ## dart: PermissionGroup.reminders
+        # 'PERMISSION_REMINDERS=1',
+
+        ## dart: PermissionGroup.contacts
+        # 'PERMISSION_CONTACTS=1',
+
+        ## dart: PermissionGroup.camera
+         'PERMISSION_CAMERA=1',
+
+        ## dart: PermissionGroup.microphone
+         'PERMISSION_MICROPHONE=1',
+
+        ## dart: PermissionGroup.speech
+        # 'PERMISSION_SPEECH_RECOGNIZER=1',
+
+        ## dart: PermissionGroup.photos
+         'PERMISSION_PHOTOS=1',
+
+        ## dart: [PermissionGroup.location, PermissionGroup.locationAlways, PermissionGroup.locationWhenInUse]
+        'PERMISSION_LOCATION=1',
+
+        ## dart: PermissionGroup.notification
+         'PERMISSION_NOTIFICATIONS=1',
+
+        ## dart: PermissionGroup.mediaLibrary
+        # 'PERMISSION_MEDIA_LIBRARY=1',
+
+        ## dart: PermissionGroup.sensors
+        # 'PERMISSION_SENSORS=1',
+
+        ## dart: PermissionGroup.bluetooth
+        # 'PERMISSION_BLUETOOTH=1',
+
+        ## dart: PermissionGroup.appTrackingTransparency
+        # 'PERMISSION_APP_TRACKING_TRANSPARENCY=1',
+
+        ## dart: PermissionGroup.criticalAlerts
+        # 'PERMISSION_CRITICAL_ALERTS=1'
+      ]
+
+    end
+    # End of the permission_handler configuration
+  end
+end
+

@@ -1,0 +1,180 @@
+name: super_up
+version: 1.8.0+101
+publish_to: none
+description: Orbit app is social media chat system whats app clone
+environment:
+  sdk: '>=3.0.5 <4.0.0'
+
+dependencies:
+  yaml: ^3.1.2
+  v_chat_message_page:
+    path: ../../packages/v_chat_message_page
+  agora_rtc_engine:
+    git:
+      url: https://github.com/AgoraIO-Extensions/Agora-Flutter-SDK.git
+      ref: main
+  v_chat_sdk_core:
+    path: ../../packages/v_chat_sdk_core
+  v_chat_room_page:
+    path: ../../packages/v_chat_room_page
+  v_chat_media_editor:
+    path: ../../packages/v_chat_media_editor
+#  v_chat_one_signal:
+#    path: ../../packages/v_chat_one_signal
+  v_chat_firebase_fcm:
+    path: ../../packages/v_chat_firebase_fcm
+  v_chat_receive_share:
+    path: ../../packages/v_chat_receive_share
+  v_chat_input_ui:
+    path: ../../packages/v_chat_input_ui
+  v_chat_voice_player: ^3.0.0
+  cupertino_icons: ^1.0.8
+  badges: ^3.1.2
+  firebase_core: ^3.8.0
+  flutter_cache_manager: ^3.4.1
+  http: ^1.2.2
+  dart_openai: ^5.1.0
+  firebase_messaging: ^15.1.5
+  super_up_core:
+    path: ../../packages/super_up_core
+  s_translation:
+    path: ../../packages/s_translation
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  email_validator: ^3.0.0
+  touchable_opacity: ^1.2.0
+  window_manager: ^0.4.3
+  package_info_plus: ^8.1.0
+  get_it: ^8.0.2
+  url_strategy: ^0.3.0
+  path_provider: ^2.1.5
+  geolocator: ^12.0.0
+  responsive_builder: ^0.7.1
+  version: ^3.0.2
+  responsive_framework: ^1.5.1
+  universal_html: ^2.2.4
+  app_links: ^6.3.2
+  #  auto_updater: ^0.1.7
+  flutter_native_splash: ^2.4.3
+  chopper: ^8.0.3
+  logging: ^1.3.0
+  modal_bottom_sheet: ^3.0.0
+  v_platform: ^2.1.4
+  google_fonts: ^6.2.1
+  google_mobile_ads: ^5.2.0
+  google_maps_flutter: ^2.13.1
+  geocoding: ^2.1.1
+  loadmore: ^2.1.0
+  intl: ^0.20.2
+  url_launcher: ^6.3.1
+  share_plus: ^10.1.1
+  flutter_contacts: ^1.1.9+2
+  enum_to_string: ^2.0.1
+  adaptive_dialog: ^2.2.1+2
+  pdf: ^3.11.0
+  printing: ^5.12.0
+  pinput: ^5.0.0
+  local_auth: ^2.3.0
+  flutter_local_notifications: ^18.0.0
+  dashed_circle: ^0.0.2
+  story_view: ^0.16.5
+  flutter_volume_controller: ^1.3.2
+  hexcolor: ^3.0.1
+  background_downloader: ^8.8.0
+  file_sizes: ^1.0.6
+  mime: ^2.0.0
+  image: ^4.2.0
+  permission_handler: ^11.3.1
+  audio_service: ^0.18.18
+  audio_session: ^0.2.2
+  file_picker: ^8.1.7
+  encrypt: ^5.0.1
+  in_app_purchase: ^3.2.3
+  video_trimmer: ^5.0.0
+  bson: ^5.0.7
+  auth0_flutter: ^1.6.0
+  firebase_auth: ^5.3.0
+  font_awesome_flutter: ^10.7.0
+  image_picker: ^1.0.7
+  visibility_detector: ^0.4.0+2
+  shared_preferences: ^2.2.2
+  crop_your_image: ^2.0.0
+  screen_protector: ^1.4.2
+  wakelock_plus: ^1.2.8
+
+dev_dependencies:
+  flutter_lints: ^5.0.0
+  build_runner: ^2.4.13
+  chopper_generator: ^8.0.3
+#  msix: ^3.16.8
+  flutter_launcher_icons: ^0.14.1
+
+# Dependency override to fix iris_method_channel NDK compatibility issue
+dependency_overrides:
+  agora_rtc_engine:
+    git:
+      url: https://github.com/AgoraIO-Extensions/Agora-Flutter-SDK.git
+      ref: main
+  # Force compatible versions of record packages to fix Android build error from record_linux 0.7.2
+  record: ^5.0.5
+  record_platform_interface: ^1.4.0
+  record_linux: ^1.2.1
+  # Fix iOS crash: Duplicate plugin key VideoThumbnailPlugin
+  video_thumbnail:
+    path: ../../packages/video_thumbnail_stub
+  get_thumbnail_video:
+    path: ../../packages/get_thumbnail_video_stub
+
+flutter:
+  assets:
+    - assets/
+    - assets/message/
+    - assets/chat_themes/
+    - assets/custom_emojis/
+  uses-material-design: true
+  generate: true
+
+flutter_icons:
+  android: ic_launcher
+  image_path: assets/orbit-logo.png
+  ios: true
+  remove_alpha_ios: true
+  adaptive_icon_background: "#ffffff"
+  adaptive_icon_foreground: "assets/orbit-logo.png"
+  #  adaptive_icon_foreground: true
+  min_sdk_android: 21 # android min sdk min:16, default 21
+  web:
+    generate: true
+    image_path: "assets/orbit-logo.png"
+    background_color: "#hexcode"
+    theme_color: "#hexcode"
+  windows:
+    generate: true
+    image_path: "assets/orbit-logo.png"
+    icon_size: 48 # min:48, max:256, default: 48
+  macos:
+    generate: true
+    image_path: "assets/orbit-logo.png"
+
+##only for windows app
+#msix_config:
+#  display_name: Orbit
+#  publisher_display_name: VCHATSDK
+#  publisher: CN=8A81D011-D5B0-414F-B3F7-A768A6B8C95E
+#  identity_name: 27120VCHATSDK.superup
+#  msix_version: 1.0.0.0
+#  languages: en
+#  logo_path: C:\Users\20101\flutter_projects\superup\apps\super_up_app\assets\logo_windows.png
+#  store: true
+#  capabilities: internetClient
+#  app_installer:
+#    publish_folder_path: C:\Users\20101\flutter_projects\superup\apps\super_up_app\installers\msix
+#    hours_between_update_checks: 0
+#    automatic_background_task: true
+#    update_blocks_activation: true
+#    show_prompt: true
+#    force_update_from_any_version: true
+#flutter_intl:
+#  enabled: false

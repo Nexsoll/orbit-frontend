@@ -1,0 +1,14 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>Orbit</title>
+        <item>
+            <title>0.0.1</title>
+            <pubDate>Wed, 22 Mar 2023 00:14:27 +0200</pubDate>
+            <sparkle:version>28</sparkle:version>
+            <sparkle:shortVersionString>0.0.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>10.15</sparkle:minimumSystemVersion>
+            <enclosure url="https://superupdev.online/apps/super_up.dmg" length="38409810" type="application/octet-stream" sparkle:edSignature="VqXO672W4P97cnr8ZJtYDMxCTc0TvnbgWZAXdDuA8VficPA8N9e2CudTN78PS774R21AS/3Xj9pVvycsQ156Bg=="/>
+        </item>
+    </channel>
+</rss>

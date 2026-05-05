@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSLocationUsageDescription</key>
+	<string>To allow send current location pin in chats</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>We use this permission to download files from chat to your system</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIconFile</key>
+	<string></string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(FLUTTER_BUILD_NAME)</string>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>$(PRODUCT_COPYRIGHT)</string>
+	<key>NSMainNibFile</key>
+	<string>MainMenu</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSCameraUsageDescription</key>
+	<string>to allow user to take photo and video and upload it to server</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>to allow user to take video with voice for more info and send it to the peer user and upload it to server</string>
+	<key>SUPublicEDKey</key>
+	<string>OeHKzDFE9l1w/BUaqDnGWSVb9s0DywB1gFDCldxz42E=</string>
+	<key>SUFeedURL</key>
+	<string>https://raw.githubusercontent.com/super-up/super_up_docs/apps/appcast.xml</string>
+	<key>SUEnableInstallerLauncherService</key>
+	<true/>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.social-networking</string>
+    <key>NSUserActivityTypes</key>
+    <array>
+        <!-- Add this if your app sends messages -->
+        <string>INSendMessageIntent</string>
+    </array>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>To allow user to select photo or photos share with his friends in chats and upload it to server</string>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>Super-up would like to save photos from the app chat to your gallery</string>
+</dict>
+</plist>

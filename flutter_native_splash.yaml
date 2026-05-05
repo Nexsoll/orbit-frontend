@@ -1,0 +1,6 @@
+flutter_native_splash:
+  web: true
+  android: true
+  ios: true
+  color: "#EEEDE7" # Background color
+  image: assets/orbit-logo.png # Path to your splash image
