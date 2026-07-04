@@ -11,6 +11,7 @@ import '../../../core/api_service/auth/auth_api_service.dart';
 import '../../../core/api_service/profile/profile_api_service.dart';
 import '../../../core/dto/social_login_dto.dart';
 import 'package:super_up/app/modules/auth/profile_picture_upload/views/profile_picture_upload_view.dart';
+import '../../splash/views/splash_view.dart';
 
 class SocialLoginButtons extends StatelessWidget {
   final AuthApiService authService;
@@ -26,43 +27,62 @@ class SocialLoginButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final buttons = [
-      _SocialBtnWithIcon(icon: FontAwesomeIcons.google, label: 'Google', onTap: () => _signInWithAuth0(context, 'google-oauth2')),
-      _SocialBtnWithIcon(icon: FontAwesomeIcons.facebookF, label: 'Facebook', onTap: () => _signInWithAuth0(context, 'facebook')),
-      _SocialBtnWithIcon(icon: FontAwesomeIcons.xTwitter, label: 'X', onTap: () => _signInWithAuth0(context, 'twitter')),
-      _SocialBtnWithIcon(icon: FontAwesomeIcons.linkedinIn, label: 'LinkedIn', onTap: () => _signInWithAuth0(context, 'linkedin')),
-      _SocialBtnWithIcon(icon: FontAwesomeIcons.microsoft, label: 'Microsoft', onTap: () => _signInWithAuth0(context, 'windowslive')),
-      _SocialBtnWithIcon(icon: FontAwesomeIcons.yahoo, label: 'Yahoo', onTap: () => _signInWithAuth0(context, 'yahoo')),
-      _SocialBtnWithIcon(icon: FontAwesomeIcons.snapchat, label: 'Snapchat', onTap: () => _signInWithAuth0(context, 'snapchat')),
-    ];
+    return Row(
+      children: [
+        Expanded(
+          child: _buildSocialIconButton(
+            icon: FontAwesomeIcons.google,
+            onTap: () => _signInWithAuth0(context, 'google-oauth2'),
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: _buildSocialIconButton(
+            icon: FontAwesomeIcons.facebookF,
+            onTap: () => _signInWithAuth0(context, 'facebook'),
+          ),
+        ),
+      ],
+    );
+  }
 
-    return Wrap(
-      alignment: WrapAlignment.center,
-      runSpacing: 10,
-      spacing: 10,
-      children: buttons
-          .map((b) => SizedBox(
-                width: 60,
-                height: 60,
-                child: CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  color: const Color(0xFFB48648).withOpacity(0.2),
-                  onPressed: b.onTap,
-                  child: FaIcon(
-                    b.icon,
-                    color: Colors.white,
-                    size: 24,
-                  ),
-                ),
-              ))
-          .toList(),
+  Widget _buildSocialIconButton({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return Container(
+      height: 56,
+      decoration: BoxDecoration(
+        color: const Color(0xFFB48648).withOpacity(0.15),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFFB48648).withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Center(
+            child: FaIcon(
+              icon,
+              color: const Color(0xFFB48648),
+              size: 24,
+            ),
+          ),
+        ),
+      ),
     );
   }
 
   Future<void> _signInWithAuth0(BuildContext context, String connection) async {
     print('🔐 Starting Auth0 login with $connection');
+    bool loadingOpen = false;
     try {
       VAppAlert.showLoading(context: context);
+      loadingOpen = true;
       print('🔐 Loading dialog shown, calling Auth0...');
       
       final auth0Token = await AppAuth0Service.I.loginWithSocialProvider(connection);
@@ -113,12 +133,14 @@ class SocialLoginButtons extends StatelessWidget {
       }
 
       if (isAddingAccount) {
-        if (Navigator.of(context).canPop()) {
+        if (loadingOpen && Navigator.of(context).canPop()) {
           Navigator.of(context).pop();
+          loadingOpen = false;
         }
-        VAppAlert.showSuccessSnackBar(
-          context: context,
-          message: 'Account added successfully',
+        context.toPage(
+          const SplashView(),
+          withAnimation: false,
+          removeAll: true,
         );
       } else {
         if (profile.registerStatus == RegisterStatus.accepted) {
@@ -149,7 +171,7 @@ class SocialLoginButtons extends StatelessWidget {
       );
     } finally {
       print('🔐 Cleaning up loading dialog...');
-      if (context.mounted && Navigator.of(context).canPop()) {
+      if (loadingOpen && context.mounted && Navigator.of(context).canPop()) {
         Navigator.of(context).pop();
       }
     }

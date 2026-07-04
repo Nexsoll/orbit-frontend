@@ -30,6 +30,7 @@ import 'package:super_up/app/widgets/job_share_message_widget.dart';
 import 'package:super_up/app/widgets/profile_share_message_widget.dart';
 import 'package:super_up/app/widgets/story_share_message_widget.dart';
 import 'package:super_up/app/widgets/post_share_message_widget.dart';
+import 'package:super_up/app/widgets/ticket_share_message_widget.dart';
 import 'package:super_up/v_chat_v2/v_chat_config.dart';
 import 'package:super_up_core/super_up_core.dart';
 // Notification handler is now in v_chat_firebase_fcm package
@@ -78,14 +79,16 @@ void notificationBackgroundHandler(NotificationResponse details) async {
   print('ActionId: ${details.actionId}');
   print('Input: ${details.input}');
   print('Payload: ${details.payload}');
-  
-  if (details.actionId == "2" && details.input != null && details.input!.isNotEmpty) {
+
+  if (details.actionId == "2" &&
+      details.input != null &&
+      details.input!.isNotEmpty) {
     try {
       String roomId = "";
       String token = "";
-      String baseUrl = "https://api.orbit.ke/api/v1";
+      String baseUrl = SConstants.sApiBaseUrl.toString();
       final payload = details.payload ?? "";
-      
+
       try {
         if (payload.trim().startsWith('{')) {
           final payloadData = jsonDecode(payload);
@@ -98,44 +101,48 @@ void notificationBackgroundHandler(NotificationResponse details) async {
       } catch (e) {
         roomId = payload;
       }
-      
+
       if (token.isEmpty) {
         await VAppPref.init();
-        token = VAppPref.getHashedString(key: SStorageKeys.vAccessToken.name) ?? "";
+        token =
+            VAppPref.getHashedString(key: SStorageKeys.vAccessToken.name) ?? "";
         final prefBaseUrl = await VAppPref.getStringOrNullKey("vBaseUrl");
         if (prefBaseUrl != null && prefBaseUrl.isNotEmpty) {
-           baseUrl = prefBaseUrl;
+          baseUrl = prefBaseUrl;
         }
       }
-      
+
       if (roomId.isNotEmpty && token.isNotEmpty) {
         print('📤 SENDING REPLY FROM BACKGROUND HANDLER');
         print('RoomId: $roomId');
         print('Message: ${details.input}');
         print('BaseUrl: $baseUrl');
-        
-        final uri = Uri.parse("$baseUrl/channel/$roomId/message/notification-reply");
+
+        final uri =
+            Uri.parse("$baseUrl/channel/$roomId/message/notification-reply");
         print('Endpoint: $uri');
-        
-        final response = await http.post(
-          uri,
-          headers: {
-            'authorization': 'Bearer $token',
-            'content-type': 'application/json',
-            'clint-version': '2.0.0',
-            'Accept-Language': 'en',
-          },
-          body: jsonEncode({
-            'content': details.input!.trim(),
-            'roomId': roomId,
-            'localId': 'notif_${DateTime.now().millisecondsSinceEpoch}',
-            'platform': 'android',
-          }),
-        ).timeout(const Duration(seconds: 10));
-        
+
+        final response = await http
+            .post(
+              uri,
+              headers: {
+                'authorization': 'Bearer $token',
+                'content-type': 'application/json',
+                'clint-version': '2.0.0',
+                'Accept-Language': 'en',
+              },
+              body: jsonEncode({
+                'content': details.input!.trim(),
+                'roomId': roomId,
+                'localId': 'notif_${DateTime.now().millisecondsSinceEpoch}',
+                'platform': 'android',
+              }),
+            )
+            .timeout(const Duration(seconds: 10));
+
         print('✅✅✅ REPLY SENT! Status: ${response.statusCode}');
         print('Response body: ${response.body}');
-        
+
         if (response.statusCode >= 200 && response.statusCode < 300) {
           try {
             final readUri = Uri.parse("$baseUrl/channel/$roomId/read");
@@ -147,7 +154,7 @@ void notificationBackgroundHandler(NotificationResponse details) async {
                 'Accept-Language': 'en',
               },
             ).timeout(const Duration(seconds: 10));
-            
+
             if (readResponse.statusCode == 200) {
               try {
                 final nativeLocal = VLocalNativeApi();
@@ -173,9 +180,9 @@ void notificationBackgroundHandler(NotificationResponse details) async {
     try {
       String roomId = "";
       String token = "";
-      String baseUrl = "https://api.orbit.ke/api/v1";
+      String baseUrl = SConstants.sApiBaseUrl.toString();
       final payload = details.payload ?? "";
-      
+
       try {
         if (payload.trim().startsWith('{')) {
           final payloadData = jsonDecode(payload);
@@ -188,24 +195,25 @@ void notificationBackgroundHandler(NotificationResponse details) async {
       } catch (e) {
         roomId = payload;
       }
-      
+
       if (token.isEmpty) {
         await VAppPref.init();
-        token = VAppPref.getHashedString(key: SStorageKeys.vAccessToken.name) ?? "";
+        token =
+            VAppPref.getHashedString(key: SStorageKeys.vAccessToken.name) ?? "";
         final prefBaseUrl = await VAppPref.getStringOrNullKey("vBaseUrl");
         if (prefBaseUrl != null && prefBaseUrl.isNotEmpty) {
-           baseUrl = prefBaseUrl;
+          baseUrl = prefBaseUrl;
         }
       }
-      
+
       if (roomId.isNotEmpty && token.isNotEmpty) {
         print('📤 MARKING AS READ FROM BACKGROUND HANDLER');
         print('RoomId: $roomId');
         print('BaseUrl: $baseUrl');
-        
+
         final uri = Uri.parse("$baseUrl/channel/$roomId/read");
         print('Endpoint: $uri');
-        
+
         final response = await http.patch(
           uri,
           headers: {
@@ -214,9 +222,9 @@ void notificationBackgroundHandler(NotificationResponse details) async {
             'Accept-Language': 'en',
           },
         ).timeout(const Duration(seconds: 10));
-        
+
         print('✅✅✅ MARKED AS READ! Status: ${response.statusCode}');
-        
+
         // Clear notifications after successful mark read
         if (response.statusCode == 200) {
           // Update local DB unread count - the UI will refresh on resume via consumePendingMarkReadRoom
@@ -226,8 +234,10 @@ void notificationBackgroundHandler(NotificationResponse details) async {
             await nativeLocal.room.updateRoomUnreadToZero(roomId);
             print('✅ Local unread count set to zero');
             try {
-              final r = await nativeLocal.room.getOneWithLastMessageByRoomId(roomId);
-              print('🔍 Background local room after update: roomId=$roomId unReadCount=${r?.unReadCount}');
+              final r =
+                  await nativeLocal.room.getOneWithLastMessageByRoomId(roomId);
+              print(
+                  '🔍 Background local room after update: roomId=$roomId unReadCount=${r?.unReadCount}');
             } catch (e) {
               print('❌ Background debug read room error: $e');
             }
@@ -260,7 +270,7 @@ Future<void> consumePendingMarkReadRoom() async {
       print('⚠️ VChatController not initialized yet, skipping room refresh');
       return;
     }
-    
+
     // SharedPreferences doesn't share across isolates on Android
     // Instead, just refresh rooms from local DB - the background handler already updated unread to 0
     if (GetIt.I.isRegistered<RoomsTabController>()) {
@@ -270,13 +280,15 @@ Future<void> consumePendingMarkReadRoom() async {
       try {
         final rooms = roomsTabController.vRoomController.rooms;
         final withUnread = rooms.where((e) => e.unReadCount > 0).toList();
-        print('🔍 RoomsTabController rooms count=${rooms.length} unreadRooms=${withUnread.length}');
+        print(
+            '🔍 RoomsTabController rooms count=${rooms.length} unreadRooms=${withUnread.length}');
         if (rooms.isNotEmpty) {
           final r = rooms.firstWhere(
             (e) => e.unReadCount > 0,
             orElse: () => rooms.first,
           );
-          print('🔍 Sample room after refresh: roomId=${r.id} unReadCount=${r.unReadCount} lastMsg="${r.lastMessage.realContent}"');
+          print(
+              '🔍 Sample room after refresh: roomId=${r.id} unReadCount=${r.unReadCount} lastMsg="${r.lastMessage.realContent}"');
         }
       } catch (e) {
         print('❌ RoomsTabController debug state read error: $e');
@@ -300,7 +312,8 @@ Future<void> _initWebNotifications() async {
       badge: true,
       sound: true,
     );
-    print('Web notification permission status: ${settings.authorizationStatus}');
+    print(
+        'Web notification permission status: ${settings.authorizationStatus}');
 
     // Foreground message handler: show a simple in-app banner
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
@@ -374,23 +387,23 @@ Future<void> _initReceiveShareHandlerWithStory() async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // On iOS, defer heavy initialization to allow VM Service to attach
   if (VPlatforms.isIOS) {
     print('🚀 iOS detected - using minimal startup sequence');
     await _runMinimalStartup();
     return;
   }
-  
+
   // Non-iOS: proceed with normal startup
   await _runFullStartup();
 }
 
 Future<void> _runMinimalStartup() async {
   print('⏱️  iOS Minimal startup: no platform channels before runApp...');
-  
+
   print('✅ Minimal startup complete. Running app...');
-  
+
   runApp(
     VUtilsWrapper(
       builder: (_, local, themeMode) {
@@ -418,11 +431,17 @@ Future<void> _runMinimalStartup() async {
           ],
           supportedLocales: S.delegate.supportedLocales,
           builder: (context, child) {
-            final themeData = (isDark ? ThemeData.dark() : ThemeData.light()).copyWith(
+            final themeData =
+                (isDark ? ThemeData.dark() : ThemeData.light()).copyWith(
               extensions: [
-                (isDark ? VMessageTheme.dark() : VMessageTheme.light()).copyWith(
-                  senderBubbleColor: isDark ? const Color(0xff005046) : const Color(0xffE2FFD4),
-                  receiverBubbleColor: isDark ? const Color(0xff1f2c34) : const Color(0xffFFFFFF),
+                (isDark ? VMessageTheme.dark() : VMessageTheme.light())
+                    .copyWith(
+                  senderBubbleColor: isDark
+                      ? const Color(0xff005046)
+                      : const Color(0xffE2FFD4),
+                  receiverBubbleColor: isDark
+                      ? const Color(0xff1f2c34)
+                      : const Color(0xffFFFFFF),
                   senderTextStyle: TextStyle(
                     color: isDark ? Colors.white : Colors.black,
                     fontSize: 16.5,
@@ -524,6 +543,13 @@ Future<void> _runMinimalStartup() async {
                       );
                     }
 
+                    if (data['type'] == 'ticket_share') {
+                      return TicketShareMessageWidget(
+                        isMeSender: isMeSender,
+                        data: data,
+                      );
+                    }
+
                     Map<String, dynamic> stickerData = data;
                     if (data.containsKey('data') && data['data'] is Map) {
                       stickerData = data['data'] as Map<String, dynamic>;
@@ -557,6 +583,13 @@ Future<void> _runMinimalStartup() async {
                       );
                     }
 
+                    if (stickerData['type'] == 'ticket_share') {
+                      return TicketShareMessageWidget(
+                        isMeSender: isMeSender,
+                        data: stickerData,
+                      );
+                    }
+
                     if (stickerData['type'] == 'sticker') {
                       return StickerMessageWidget(
                         isMeSender: isMeSender,
@@ -584,7 +617,8 @@ Future<void> _runMinimalStartup() async {
           theme: CupertinoThemeData(
             brightness: brightness,
             primaryColor: const Color(0xFFB48648),
-            scaffoldBackgroundColor: isDark ? Colors.black : const Color(0xFFc9cfc8),
+            scaffoldBackgroundColor:
+                isDark ? Colors.black : const Color(0xFFc9cfc8),
             barBackgroundColor: isDark ? Colors.black : const Color(0xFFc9cfc8),
           ),
         );
@@ -648,24 +682,26 @@ class _IosBootstrapViewState extends State<_IosBootstrapView> {
 Future<void> _runFullStartup() async {
   // Full startup for non-iOS platforms
   print('🚀 Full startup: initializing all services...');
-  
+
   // Initialize app preferences as early as possible
   await VAppPref.init();
-  
+
   // Ensure Google Maps uses the latest renderer on Android
   if (VPlatforms.isAndroid) {
-    final GoogleMapsFlutterPlatform mapsPlatform = GoogleMapsFlutterPlatform.instance;
+    final GoogleMapsFlutterPlatform mapsPlatform =
+        GoogleMapsFlutterPlatform.instance;
     if (mapsPlatform is GoogleMapsFlutterAndroid) {
       try {
         mapsPlatform.useAndroidViewSurface = true;
-        final used = await mapsPlatform.initializeWithRenderer(AndroidMapRenderer.latest);
+        final used = await mapsPlatform
+            .initializeWithRenderer(AndroidMapRenderer.latest);
         debugPrint('Google Maps Android renderer initialized: ${used?.name}');
       } catch (e) {
         debugPrint('Google Maps renderer init failed: $e');
       }
     }
   }
-  
+
   // Initialize notifications using the shared PlatformNotifier (single instance)
   if (VPlatforms.isAndroid) {
     print('🔔 Initializing PlatformNotifier notifications...');
@@ -688,10 +724,10 @@ Future<void> _runFullStartup() async {
       print('⚠️ PlatformNotifier init skipped/timed out: $e');
     }
   }
-  
+
   // Initialize Auth0
   AppAuth0Service.I.initialize();
-  
+
   if (VPlatforms.isDeskTop) {
     await _setDesktopWindow();
   }
@@ -705,7 +741,7 @@ Future<void> _runFullStartup() async {
   } catch (e) {
     print('ERROR during registerSingletons: $e');
   }
-  
+
   try {
     await GetIt.I.get<VAppConfigController>().refreshAppConfig();
   } catch (e) {
@@ -735,7 +771,7 @@ Future<void> _runFullStartup() async {
     FirebaseMessaging.onBackgroundMessage(vFirebaseMessagingBackgroundHandler);
     print('DEBUG: FCM background handler registered successfully');
   }
-  
+
   try {
     print('Loading custom emojis...');
     await CustomEmojiLoader.loadOrbitEmojis();
@@ -743,7 +779,7 @@ Future<void> _runFullStartup() async {
   } catch (e) {
     print('⚠️ Error loading custom emojis: $e');
   }
-  
+
   try {
     print('Initializing VChat...');
     await initVChat(navigatorKey);
@@ -771,7 +807,7 @@ Future<void> _runFullStartup() async {
   } catch (e) {
     print('⚠️ Error initializing LiveLocationService: $e');
   }
-  
+
   try {
     print('Initializing ride socket service...');
     RideSocketService.instance.init();
@@ -779,7 +815,7 @@ Future<void> _runFullStartup() async {
   } catch (e) {
     print('⚠️ Error initializing ride socket service: $e');
   }
-  
+
   await _initReceiveShareHandlerWithStory();
 
   if (VPlatforms.isAndroid) {
@@ -791,7 +827,7 @@ Future<void> _runFullStartup() async {
       print('⚠️ Error initializing CallKit: $e');
     }
   }
-  
+
   try {
     print('Initializing deep link service...');
     await DeepLinkService().initialize();
@@ -980,7 +1016,8 @@ Future<void> _runFullStartup() async {
                           Map<String, dynamic> offerData = data;
                           if (data['type'] != 'marketplace_offer' &&
                               data['data'] is Map &&
-                              (data['data'] as Map)['type'] == 'marketplace_offer') {
+                              (data['data'] as Map)['type'] ==
+                                  'marketplace_offer') {
                             offerData = {
                               ...Map<String, dynamic>.from(data['data'] as Map),
                               ...data,
@@ -1072,6 +1109,13 @@ Future<void> _runFullStartup() async {
                             );
                           }
 
+                          if (data['type'] == 'ticket_share') {
+                            return TicketShareMessageWidget(
+                              isMeSender: isMeSender,
+                              data: data,
+                            );
+                          }
+
                           Map<String, dynamic> stickerData = data;
                           if (data.containsKey('data') && data['data'] is Map) {
                             stickerData = data['data'] as Map<String, dynamic>;
@@ -1100,6 +1144,13 @@ Future<void> _runFullStartup() async {
 
                           if (stickerData['type'] == 'post_share') {
                             return PostShareMessageWidget(
+                              isMeSender: isMeSender,
+                              data: stickerData,
+                            );
+                          }
+
+                          if (stickerData['type'] == 'ticket_share') {
+                            return TicketShareMessageWidget(
                               isMeSender: isMeSender,
                               data: stickerData,
                             );
@@ -1142,7 +1193,8 @@ Future<void> _runFullStartup() async {
                           Map<String, dynamic> offerData = data;
                           if (data['type'] != 'marketplace_offer' &&
                               data['data'] is Map &&
-                              (data['data'] as Map)['type'] == 'marketplace_offer') {
+                              (data['data'] as Map)['type'] ==
+                                  'marketplace_offer') {
                             offerData = {
                               ...Map<String, dynamic>.from(data['data'] as Map),
                               ...data,
@@ -1234,6 +1286,13 @@ Future<void> _runFullStartup() async {
                             );
                           }
 
+                          if (data['type'] == 'ticket_share') {
+                            return TicketShareMessageWidget(
+                              isMeSender: isMeSender,
+                              data: data,
+                            );
+                          }
+
                           Map<String, dynamic> stickerData = data;
                           if (data.containsKey('data') && data['data'] is Map) {
                             stickerData = data['data'] as Map<String, dynamic>;
@@ -1262,6 +1321,13 @@ Future<void> _runFullStartup() async {
 
                           if (stickerData['type'] == 'post_share') {
                             return PostShareMessageWidget(
+                              isMeSender: isMeSender,
+                              data: stickerData,
+                            );
+                          }
+
+                          if (stickerData['type'] == 'ticket_share') {
+                            return TicketShareMessageWidget(
                               isMeSender: isMeSender,
                               data: stickerData,
                             );
@@ -1336,10 +1402,9 @@ Future<void> _runFullStartup() async {
                 brightness: _getIosBrightness(theme),
                 applyThemeToAll: true,
                 primaryColor: const Color(0xFFB48648),
-                barBackgroundColor:
-                    _getIosBrightness(theme) == Brightness.dark
-                        ? Colors.black
-                        : const Color(0xFFc9cfc8),
+                barBackgroundColor: _getIosBrightness(theme) == Brightness.dark
+                    ? Colors.black
+                    : const Color(0xFFc9cfc8),
                 scaffoldBackgroundColor:
                     _getIosBrightness(theme) == Brightness.dark
                         ? Colors.black
@@ -1364,7 +1429,7 @@ Future<void> _initializeHeavyServices() async {
   } catch (e) {
     print('⚠️ VAppPref init failed: $e');
   }
-  
+
   // Initialize Auth0 (moved from minimal startup)
   try {
     AppAuth0Service.I.initialize();
@@ -1372,7 +1437,7 @@ Future<void> _initializeHeavyServices() async {
   } catch (e) {
     print('⚠️ Auth0 init failed: $e');
   }
-  
+
   // Initialize deep links (moved from minimal startup)
   try {
     await DeepLinkService().initialize();
@@ -1380,13 +1445,13 @@ Future<void> _initializeHeavyServices() async {
   } catch (e) {
     print('⚠️ Deep link init failed: $e');
   }
-  
+
   try {
     registerSingletons();
   } catch (e) {
     print('ERROR during registerSingletons: $e');
   }
-  
+
   try {
     await GetIt.I.get<VAppConfigController>().refreshAppConfig();
   } catch (e) {
@@ -1410,7 +1475,7 @@ Future<void> _initializeHeavyServices() async {
     FirebaseMessaging.onBackgroundMessage(vFirebaseMessagingBackgroundHandler);
     print('DEBUG: FCM background handler registered successfully');
   }
-  
+
   try {
     print('Loading custom emojis...');
     await CustomEmojiLoader.loadOrbitEmojis();
@@ -1418,7 +1483,7 @@ Future<void> _initializeHeavyServices() async {
   } catch (e) {
     print('⚠️ Error loading custom emojis: $e');
   }
-  
+
   try {
     print('Initializing VChat...');
     await initVChat(navigatorKey);
@@ -1426,7 +1491,7 @@ Future<void> _initializeHeavyServices() async {
   } catch (e) {
     print('❌ VChat initialization failed: $e');
   }
-  
+
   try {
     print('Initializing ride socket service...');
     RideSocketService.instance.init();
@@ -1434,9 +1499,9 @@ Future<void> _initializeHeavyServices() async {
   } catch (e) {
     print('⚠️ Error initializing ride socket service: $e');
   }
-  
+
   await _initReceiveShareHandlerWithStory();
-  
+
   try {
     print('Initializing deep link service...');
     await DeepLinkService().initialize();
@@ -1556,7 +1621,7 @@ Future<void> _initializeHeavyServices() async {
   } catch (e) {
     print('⚠️ Error checking notification permissions status: $e');
   }
-  
+
   print('✅ All heavy services initialized on iOS');
 }
 
@@ -1799,20 +1864,22 @@ void _requestNotificationPermissions() async {
 
     // Also request local notification permissions using flutter_local_notifications
     final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
-    
+
     if (VPlatforms.isIOS) {
       final iosImplementation =
           flutterLocalNotificationsPlugin.resolvePlatformSpecificImplementation<
               IOSFlutterLocalNotificationsPlugin>();
 
       if (iosImplementation != null) {
-        final localPermissionResult = await iosImplementation.requestPermissions(
+        final localPermissionResult =
+            await iosImplementation.requestPermissions(
           alert: true,
           badge: true,
           sound: true,
           critical: true,
         );
-        print('iOS local notification permission result: $localPermissionResult');
+        print(
+            'iOS local notification permission result: $localPermissionResult');
       }
     } else if (VPlatforms.isAndroid) {
       final androidImplementation =
@@ -1820,8 +1887,10 @@ void _requestNotificationPermissions() async {
               AndroidFlutterLocalNotificationsPlugin>();
 
       if (androidImplementation != null) {
-        final localPermissionResult = await androidImplementation.requestNotificationsPermission();
-        print('Android local notification permission result: $localPermissionResult');
+        final localPermissionResult =
+            await androidImplementation.requestNotificationsPermission();
+        print(
+            'Android local notification permission result: $localPermissionResult');
       }
     }
   } catch (e) {

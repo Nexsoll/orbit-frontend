@@ -20,13 +20,13 @@ class BecomeDriverView extends StatefulWidget {
 
 class _BecomeDriverViewState extends State<BecomeDriverView> {
   final _formKey = GlobalKey<FormState>();
-  
+
   // Text controllers
   String? _selectedVehicleType;
   final _modelCtrl = TextEditingController();
   final _plateCtrl = TextEditingController();
   final _capacityCtrl = TextEditingController();
-  
+
   // Orbit categories
   final List<String> _vehicleTypes = [
     'Orbit Comfort',
@@ -42,7 +42,7 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
     'Orbit Send',
     'Orbit Food',
   ];
-  
+
   // Uploaded file URLs (stored after upload)
   String? _idImageUrl;
   String? _passportPhotoUrl;
@@ -52,7 +52,7 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
   String? _inspectionUrl;
   String? _kraPinUrl;
   String? _vehicleImageUrl;
-  
+
   bool _isLoading = false;
   bool _isUploading = false; // for any single file upload
   String? _uploadingDocType; // tracks which document is currently uploading
@@ -124,7 +124,8 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
       context: context,
       builder: (context) => CupertinoAlertDialog(
         title: const Text('Application Pending'),
-        content: const Text('Your driver application is pending review. We will notify you once approved.'),
+        content: const Text(
+            'Your driver application is pending review. We will notify you once approved.'),
         actions: [
           CupertinoDialogAction(
             child: const Text('OK'),
@@ -134,7 +135,7 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
       ),
     );
   }
-  
+
   Future<void> _pickFile(String type) async {
     if (_isUploading) return;
     try {
@@ -143,9 +144,26 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
       switch (type) {
         case 'ID/Passport':
         case "Driver's License":
-        case 'Passport Photo':
         case 'Vehicle Image':
-          picked = await VAppPick.getImage(isFromCamera: type == 'Passport Photo');
+          picked = await VAppPick.getImage();
+          break;
+        case 'Passport Photo':
+          final choice = await VAppAlert.showModalSheetWithActions(
+            context: context,
+            cancelLabel: 'Cancel',
+            content: [
+              ModelSheetItem(
+                  id: 'camera',
+                  title: 'Camera',
+                  iconData: const Icon(CupertinoIcons.camera)),
+              ModelSheetItem(
+                  id: 'gallery',
+                  title: 'Gallery',
+                  iconData: const Icon(CupertinoIcons.photo_on_rectangle)),
+            ],
+          );
+          if (choice == null) return;
+          picked = await VAppPick.getImage(isFromCamera: choice.id == 'camera');
           break;
         case 'Logbook':
         case 'Insurance':
@@ -156,8 +174,14 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
             context: context,
             cancelLabel: 'Cancel',
             content: [
-              ModelSheetItem(id: 'files', title: 'Pick Document', iconData: const Icon(CupertinoIcons.doc)),
-              ModelSheetItem(id: 'media', title: 'Pick Photo/Video', iconData: const Icon(CupertinoIcons.photo_on_rectangle)),
+              ModelSheetItem(
+                  id: 'files',
+                  title: 'Pick Document',
+                  iconData: const Icon(CupertinoIcons.doc)),
+              ModelSheetItem(
+                  id: 'media',
+                  title: 'Pick Photo/Video',
+                  iconData: const Icon(CupertinoIcons.photo_on_rectangle)),
             ],
           );
           if (choice == null) return;
@@ -220,7 +244,8 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
       }
     } catch (e) {
       if (mounted) {
-        VAppAlert.showErrorSnackBar(context: context, message: 'Upload failed: $e');
+        VAppAlert.showErrorSnackBar(
+            context: context, message: 'Upload failed: $e');
       }
     } finally {
       if (mounted) {
@@ -231,7 +256,7 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
       }
     }
   }
-  
+
   Future<void> _submitForm() async {
     if (_hasPending) {
       await _showPendingDialog();
@@ -242,9 +267,9 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
       return;
     }
     if (!_formKey.currentState!.validate()) return;
-    
+
     setState(() => _isLoading = true);
-    
+
     try {
       await DriversApiService.createApplication(
         vehicleType: _selectedVehicleType ?? '',
@@ -261,7 +286,9 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
         vehicleImageUrl: _vehicleImageUrl,
       );
       _hasPending = true;
-      if (mounted) VAppAlert.showSuccessSnackBar(context: context, message: 'Application submitted');
+      if (mounted)
+        VAppAlert.showSuccessSnackBar(
+            context: context, message: 'Application submitted');
       if (mounted) await _showPendingDialog();
     } catch (e) {
       if (mounted) {
@@ -295,7 +322,7 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
   @override
   Widget build(BuildContext context) {
     final isDark = MediaQuery.of(context).platformBrightness == Brightness.dark;
-    
+
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
         middle: const Text(
@@ -322,7 +349,8 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(CupertinoIcons.info, color: Color(0xFF8A6D3B), size: 20),
+                      const Icon(CupertinoIcons.info,
+                          color: Color(0xFF8A6D3B), size: 20),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -395,17 +423,20 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
                   ),
                 ),
                 const SizedBox(height: 32),
-                
+
                 // Vehicle Details Section
                 _buildSectionHeader('Vehicle Details', CupertinoIcons.car_fill),
                 const SizedBox(height: 16),
-                
+
                 _buildInputField(
                   label: 'Vehicle Type',
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                     decoration: BoxDecoration(
-                      color: isDark ? CupertinoColors.darkBackgroundGray : CupertinoColors.white,
+                      color: isDark
+                          ? CupertinoColors.darkBackgroundGray
+                          : CupertinoColors.white,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: CupertinoColors.systemGrey4,
@@ -418,12 +449,16 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
                         hint: Text(
                           'Select vehicle type',
                           style: TextStyle(
-                            color: isDark ? Colors.white70 : CupertinoColors.systemGrey,
+                            color: isDark
+                                ? Colors.white70
+                                : CupertinoColors.systemGrey,
                           ),
                         ),
                         isExpanded: true,
                         icon: const Icon(CupertinoIcons.chevron_down, size: 20),
-                        dropdownColor: isDark ? CupertinoColors.darkBackgroundGray : CupertinoColors.white,
+                        dropdownColor: isDark
+                            ? CupertinoColors.darkBackgroundGray
+                            : CupertinoColors.white,
                         style: TextStyle(
                           color: isDark ? Colors.white : CupertinoColors.label,
                         ),
@@ -434,7 +469,9 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
                               type,
                               style: TextStyle(
                                 fontSize: 16,
-                                color: isDark ? Colors.white : CupertinoColors.label,
+                                color: isDark
+                                    ? Colors.white
+                                    : CupertinoColors.label,
                               ),
                             ),
                           );
@@ -448,7 +485,7 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
                     ),
                   ),
                 ),
-                
+
                 _buildInputField(
                   label: 'Vehicle Model',
                   child: CupertinoTextField(
@@ -458,11 +495,15 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
                       color: isDark ? Colors.white : CupertinoColors.label,
                     ),
                     placeholderStyle: TextStyle(
-                      color: isDark ? Colors.white70 : CupertinoColors.placeholderText,
+                      color: isDark
+                          ? Colors.white70
+                          : CupertinoColors.placeholderText,
                     ),
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: isDark ? CupertinoColors.darkBackgroundGray : CupertinoColors.white,
+                      color: isDark
+                          ? CupertinoColors.darkBackgroundGray
+                          : CupertinoColors.white,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: CupertinoColors.systemGrey4,
@@ -471,11 +512,12 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
                     ),
                     prefix: const Padding(
                       padding: EdgeInsets.only(left: 12),
-                      child: Icon(CupertinoIcons.car_detailed, color: Color(0xFFB48648), size: 20),
+                      child: Icon(CupertinoIcons.car_detailed,
+                          color: Color(0xFFB48648), size: 20),
                     ),
                   ),
                 ),
-                
+
                 _buildInputField(
                   label: 'Number Plate',
                   child: CupertinoTextField(
@@ -485,11 +527,15 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
                       color: isDark ? Colors.white : CupertinoColors.label,
                     ),
                     placeholderStyle: TextStyle(
-                      color: isDark ? Colors.white70 : CupertinoColors.placeholderText,
+                      color: isDark
+                          ? Colors.white70
+                          : CupertinoColors.placeholderText,
                     ),
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: isDark ? CupertinoColors.darkBackgroundGray : CupertinoColors.white,
+                      color: isDark
+                          ? CupertinoColors.darkBackgroundGray
+                          : CupertinoColors.white,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: CupertinoColors.systemGrey4,
@@ -498,11 +544,12 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
                     ),
                     prefix: const Padding(
                       padding: EdgeInsets.only(left: 12),
-                      child: Icon(CupertinoIcons.number, color: Color(0xFFB48648), size: 20),
+                      child: Icon(CupertinoIcons.number,
+                          color: Color(0xFFB48648), size: 20),
                     ),
                   ),
                 ),
-                
+
                 _buildInputField(
                   label: 'Vehicle Capacity',
                   child: CupertinoTextField(
@@ -513,11 +560,15 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
                       color: isDark ? Colors.white : CupertinoColors.label,
                     ),
                     placeholderStyle: TextStyle(
-                      color: isDark ? Colors.white70 : CupertinoColors.placeholderText,
+                      color: isDark
+                          ? Colors.white70
+                          : CupertinoColors.placeholderText,
                     ),
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: isDark ? CupertinoColors.darkBackgroundGray : CupertinoColors.white,
+                      color: isDark
+                          ? CupertinoColors.darkBackgroundGray
+                          : CupertinoColors.white,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: CupertinoColors.systemGrey4,
@@ -526,16 +577,18 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
                     ),
                     prefix: const Padding(
                       padding: EdgeInsets.only(left: 12),
-                      child: Icon(CupertinoIcons.person_2_fill, color: Color(0xFFB48648), size: 20),
+                      child: Icon(CupertinoIcons.person_2_fill,
+                          color: Color(0xFFB48648), size: 20),
                     ),
                   ),
                 ),
                 const SizedBox(height: 32),
-                
+
                 // Document Uploads Section
-                _buildSectionHeader('Required Documents', CupertinoIcons.doc_text_fill),
+                _buildSectionHeader(
+                    'Required Documents', CupertinoIcons.doc_text_fill),
                 const SizedBox(height: 16),
-                
+
                 // National ID or Passport
                 _buildFileUploadRow(
                   'National ID or Passport',
@@ -543,7 +596,7 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
                   () => _pickFile('ID/Passport'),
                   'ID/Passport',
                 ),
-                
+
                 // Passport Photo
                 _buildFileUploadRow(
                   'Passport Photo',
@@ -551,7 +604,7 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
                   () => _pickFile('Passport Photo'),
                   'Passport Photo',
                 ),
-                
+
                 // Driver's License
                 _buildFileUploadRow(
                   'Driver\'s License',
@@ -559,7 +612,7 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
                   () => _pickFile('Driver\'s License'),
                   'Driver\'s License',
                 ),
-                
+
                 // Logbook
                 _buildFileUploadRow(
                   'Logbook',
@@ -567,7 +620,7 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
                   () => _pickFile('Logbook'),
                   'Logbook',
                 ),
-                
+
                 // PSV/Car Insurance
                 _buildFileUploadRow(
                   'PSV/Car Insurance',
@@ -575,7 +628,7 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
                   () => _pickFile('Insurance'),
                   'Insurance',
                 ),
-                
+
                 // Vehicle Inspection Report
                 _buildFileUploadRow(
                   'Vehicle Inspection Report',
@@ -583,7 +636,7 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
                   () => _pickFile('Inspection Report'),
                   'Inspection Report',
                 ),
-                
+
                 // KRA Pin
                 _buildFileUploadRow(
                   'KRA Pin',
@@ -591,7 +644,7 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
                   () => _pickFile('KRA Pin'),
                   'KRA Pin',
                 ),
-                
+
                 // Vehicle Image
                 _buildFileUploadRow(
                   'Vehicle Image',
@@ -599,9 +652,9 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
                   () => _pickFile('Vehicle Image'),
                   'Vehicle Image',
                 ),
-                
+
                 const SizedBox(height: 32),
-                
+
                 // Submit Button
                 Container(
                   decoration: BoxDecoration(
@@ -619,7 +672,12 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
                   ),
                   child: CupertinoButton(
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    onPressed: (_isLoading || _isUploading || _hasPending || _isApproved) ? null : _submitForm,
+                    onPressed: (_isLoading ||
+                            _isUploading ||
+                            _hasPending ||
+                            _isApproved)
+                        ? null
+                        : _submitForm,
                     child: _isLoading
                         ? const CupertinoActivityIndicator(color: Colors.white)
                         : const Text(
@@ -640,7 +698,7 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
       ),
     );
   }
-  
+
   Widget _buildSectionHeader(String title, IconData icon) {
     return Row(
       children: [
@@ -667,7 +725,7 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
       ],
     );
   }
-  
+
   Widget _buildInputField({required String label, required Widget child}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -687,18 +745,22 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
     );
   }
 
-  Widget _buildFileUploadRow(String title, bool uploaded, VoidCallback onTap, String docType) {
+  Widget _buildFileUploadRow(
+      String title, bool uploaded, VoidCallback onTap, String docType) {
     final isDark = MediaQuery.of(context).platformBrightness == Brightness.dark;
     final isThisDocUploading = _isUploading && _uploadingDocType == docType;
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? CupertinoColors.darkBackgroundGray : CupertinoColors.white,
+        color:
+            isDark ? CupertinoColors.darkBackgroundGray : CupertinoColors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: uploaded ? Colors.green.withOpacity(0.3) : CupertinoColors.systemGrey4,
+          color: uploaded
+              ? Colors.green.withOpacity(0.3)
+              : CupertinoColors.systemGrey4,
           width: 1,
         ),
       ),
@@ -707,13 +769,15 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: uploaded 
-                  ? Colors.green.withOpacity(0.1) 
+              color: uploaded
+                  ? Colors.green.withOpacity(0.1)
                   : const Color(0xFFB48648).withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
-              uploaded ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.doc,
+              uploaded
+                  ? CupertinoIcons.checkmark_circle_fill
+                  : CupertinoIcons.doc,
               color: uploaded ? Colors.green : const Color(0xFFB48648),
               size: 20,
             ),
@@ -752,21 +816,21 @@ class _BecomeDriverViewState extends State<BecomeDriverView> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: isThisDocUploading
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CupertinoActivityIndicator(
-                      color: Colors.white,
-                      radius: 8,
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CupertinoActivityIndicator(
+                        color: Colors.white,
+                        radius: 8,
+                      ),
+                    )
+                  : Text(
+                      uploaded ? 'Change' : 'Upload',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                  )
-                : Text(
-                    uploaded ? 'Change' : 'Upload',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
             ),
           ),
         ],

@@ -1626,6 +1626,8 @@ class _CreateMarketplaceListingViewState
     final isKidsBaby = _isKidsBaby;
     final isSports = _isSports;
     final isBooksMusicHobbies = _isBooksMusicHobbies;
+    final isNewCategory = _category != null &&
+        !_fallbackCategories.map((e) => e.toLowerCase()).contains(_category!.toLowerCase());
     final hideBrand = isSpecial ||
         isHomeFurniture ||
         isPetsAnimals ||
@@ -1633,7 +1635,8 @@ class _CreateMarketplaceListingViewState
         isBusinessIndustrial ||
         isKidsBaby ||
         isSports ||
-        isBooksMusicHobbies;
+        isBooksMusicHobbies ||
+        isNewCategory;
 
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(

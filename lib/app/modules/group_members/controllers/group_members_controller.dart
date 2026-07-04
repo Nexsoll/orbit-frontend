@@ -2,6 +2,8 @@
 // All rights reserved. Use of this source code is governed by a
 // MIT license that can be found in the LICENSE file.
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:super_up/app/modules/peer_profile/views/peer_profile_view.dart';
@@ -13,6 +15,7 @@ class GroupMembersController extends SLoadingController<List<VGroupMember>> {
   final txtController = TextEditingController();
   final String roomId;
   final VMyGroupInfo myGroupInfo;
+  Timer? _debounce;
 
   GroupMembersController(this.roomId, this.myGroupInfo)
       : super(SLoadingState(<VGroupMember>[]));
@@ -37,7 +40,10 @@ class GroupMembersController extends SLoadingController<List<VGroupMember>> {
         setStateError();
       },
       request: () async {
-        return VChatController.I.roomApi.getGroupMembers(roomId);
+        _filterDto.page = 1;
+        _filterDto.fullName = txtController.text.trim().isEmpty ? null : txtController.text.trim();
+        isFinishLoadMore = false;
+        return VChatController.I.roomApi.getGroupMembers(roomId, filter: _filterDto);
       },
       onSuccess: (response) {
         data.clear();
@@ -48,9 +54,40 @@ class GroupMembersController extends SLoadingController<List<VGroupMember>> {
     );
   }
 
+  void onSearchChanged(String query) async {
+    if (_debounce?.isActive ?? false) _debounce?.cancel();
+
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      vSafeApiCall<List<VGroupMember>>(
+        onLoading: () {
+          setStateLoading();
+        },
+        onError: (exception, trace) {
+          setStateError();
+        },
+        request: () async {
+          _filterDto.page = 1;
+          _filterDto.fullName = query.trim().isEmpty ? null : query.trim();
+          isFinishLoadMore = false;
+          return VChatController.I.roomApi.getGroupMembers(
+            roomId,
+            filter: _filterDto,
+          );
+        },
+        onSuccess: (response) {
+          data.clear();
+          data.addAll(response);
+          setStateSuccess();
+        },
+        ignoreTimeoutAndNoInternet: false,
+      );
+    });
+  }
+
   @override
   void onClose() {
     txtController.dispose();
+    _debounce?.cancel();
   }
 
   Future<bool> onLoadMore() async {

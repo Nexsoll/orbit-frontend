@@ -13,6 +13,7 @@ import 'package:super_up/app/modules/home/mobile/settings_tab/widgets/settings_l
 import 'package:super_up/app/modules/home/settings_modules/blocked_contacts/views/blocked_contacts_page.dart';
 import 'package:super_up/app/modules/home/settings_modules/devices/linked_devices/views/linked_devices_page.dart';
 import 'package:super_up/app/modules/home/settings_modules/my_account/views/my_account_page.dart';
+import 'package:super_up/app/modules/storage/views/private_media_gallery_page.dart';
 import 'package:super_up/app/modules/peer_profile/views/follow_users_page.dart';
 import 'package:super_up/app/modules/peer_profile/views/user_music_gallery_view.dart';
 import 'package:super_up/app/widgets/balance_widget.dart';
@@ -36,6 +37,7 @@ import '../controllers/settings_tab_controller.dart';
 import 'package:super_up/app/core/api_service/api_service.dart';
 import '../../../settings_modules/ads/views/submit_ad_page.dart';
 import 'package:super_up/app/modules/ride/views/emergency_contacts_view.dart';
+import '../../../settings_modules/email_backup/views/email_backup_page.dart';
 
 class SettingsTabView extends StatefulWidget {
   const SettingsTabView({super.key});
@@ -331,8 +333,14 @@ class _SettingsTabViewState extends State<SettingsTabView> {
                                 ),
                               ),
                         padding: const EdgeInsets.all(0),
-                        leading: CustomCircleAvatar(
-                          imageUrl: AppAuth.myProfile.baseUser.userImageS3,
+                        leading: GestureDetector(
+                          onTap: () async {
+                            await context.toPage(const MyAccountPage());
+                            controller.update();
+                          },
+                          child: CustomCircleAvatar(
+                            imageUrl: AppAuth.myProfile.baseUser.userImageS3,
+                          ),
                         ),
                         subtitle: AppAuth.myProfile.bio,
                         trailing: const Row(
@@ -471,6 +479,58 @@ class _SettingsTabViewState extends State<SettingsTabView> {
                         ),
                       ),
                     ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+                      child: CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        onPressed: () {
+                          context.toPage(
+                            const PrivateMediaGalleryPage(),
+                          );
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHigh
+                                .withValues(alpha: 0.4),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .outline
+                                  .withValues(alpha: 0.15),
+                            ),
+                          ),
+                          child: Row(
+                            children: const [
+                              Icon(
+                                CupertinoIcons.lock_fill,
+                                color: Color(0xFF4D7CFE),
+                              ),
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'Private Media',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                              ),
+                              Icon(
+                                CupertinoIcons.chevron_forward,
+                                color: CupertinoColors.systemGrey2,
+                                size: 18,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                     CupertinoListSection(
                       backgroundColor: CupertinoTheme.of(context).scaffoldBackgroundColor,
                       dividerMargin: 0,
@@ -589,6 +649,12 @@ class _SettingsTabViewState extends State<SettingsTabView> {
                           title: S.of(context).submitAd,
                           onTap: () => context.toPage(const SubmitAdPage()),
                           icon: Icons.campaign,
+                        ),
+                        SettingsListItemTile(
+                          color: Colors.grey.shade800,
+                          title: 'Email Backup',
+                          onTap: () => context.toPage(const EmailBackupPage()),
+                          icon: CupertinoIcons.cloud_upload,
                         ),
                       ],
                     ),

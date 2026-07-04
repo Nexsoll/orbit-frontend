@@ -10,6 +10,7 @@ import '../api_service/gifts/gifts_api_service.dart';
 import '../api_service/loyalty_points/loyalty_points_api_service.dart';
 import '../api_service/profile/profile_api_service.dart';
 import '../api_service/story/story_api_service.dart';
+import '../api_service/status_ai/status_ai_api_service.dart';
 import '../api_service/post/post_api_service.dart';
 import '../api_service/community/community_api_service.dart';
 import '../services/story_status_service.dart';
@@ -38,6 +39,7 @@ import '../services/user_verification_service.dart';
 void registerSingletons() {
   GetIt.I.registerSingleton<AuthApiService>(AuthApiService.init());
   GetIt.I.registerSingleton<StoryApiService>(StoryApiService.init());
+  GetIt.I.registerSingleton<StatusAiApiService>(StatusAiApiService.init());
   GetIt.I.registerSingleton<PostApiService>(PostApiService.init());
   GetIt.I.registerSingleton<StoryStatusService>(StoryStatusService());
   // Eagerly initialize story status periodic refresh

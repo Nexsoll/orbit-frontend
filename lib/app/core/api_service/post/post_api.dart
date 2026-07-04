@@ -42,6 +42,7 @@ abstract class PostApi extends ChopperService {
     @Query('limit') int limit = 20,
     @Query('postType') String? postType,
     @Query('hashtag') String? hashtag,
+    @Query('search') String? search,
   });
 
   @Get(path: '/reels')

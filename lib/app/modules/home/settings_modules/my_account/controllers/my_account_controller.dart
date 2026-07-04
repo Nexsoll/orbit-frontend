@@ -50,6 +50,9 @@ class MyAccountController extends SLoadingController<MyAccountState?> {
         await VAppPref.setMap(SStorageKeys.myProfile.name, newProfile.toMap());
         AppAuth.setProfileNull();
         update();
+        VAppAlert.showSuccessSnackBarWithoutContext(
+          message: 'Profile image updated successfully',
+        );
         // context.pop();
       },
     );
@@ -74,7 +77,91 @@ class MyAccountController extends SLoadingController<MyAccountState?> {
         await VAppPref.setMap(SStorageKeys.myProfile.name, newProfile.toMap());
         AppAuth.setProfileNull();
         update();
+        VAppAlert.showSuccessSnackBarWithoutContext(
+          message: 'Profession updated successfully',
+        );
       },
+    );
+  }
+
+  String _formatDateOfBirth(DateTime value) {
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    return '${value.year}-$month-$day';
+  }
+
+  DateTime? _parseDateOfBirth(String? value) {
+    if (value == null || value.isEmpty) return null;
+    return DateTime.tryParse(value);
+  }
+
+  void updateDateOfBirth(BuildContext context) async {
+    final now = DateTime.now();
+    final initialDate = _parseDateOfBirth(AppAuth.myProfile.dateOfBirth) ??
+        DateTime(now.year - 18, now.month, now.day);
+    DateTime selected = initialDate;
+
+    await showCupertinoModalPopup<void>(
+      context: context,
+      builder: (modalContext) => Container(
+        height: 300,
+        color: CupertinoColors.systemBackground.resolveFrom(context),
+        child: Column(
+          children: [
+            SizedBox(
+              height: 44,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  CupertinoButton(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    onPressed: () => Navigator.of(modalContext).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                  CupertinoButton(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    onPressed: () {
+                      Navigator.of(modalContext).pop();
+                      final formatted = _formatDateOfBirth(selected);
+                      vSafeApiCall<String>(
+                        onLoading: () {},
+                        request: () async {
+                          await profileApiService.updateDateOfBirth(formatted);
+                          return formatted;
+                        },
+                        onSuccess: (response) async {
+                          final newProfile =
+                              AppAuth.myProfile.copyWith(dateOfBirth: response);
+                          await VAppPref.setMap(
+                              SStorageKeys.myProfile.name, newProfile.toMap());
+                          AppAuth.setProfileNull();
+                          update();
+                          VAppAlert.showSuccessSnackBarWithoutContext(
+                            message: 'Date of birth updated successfully',
+                          );
+                        },
+                      );
+                    },
+                    child: const Text('Done'),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: CupertinoDatePicker(
+                mode: CupertinoDatePickerMode.date,
+                initialDateTime: initialDate,
+                maximumDate: now,
+                minimumYear: 1900,
+                maximumYear: now.year,
+                onDateTimeChanged: (value) {
+                  selected = value;
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -121,6 +208,9 @@ class MyAccountController extends SLoadingController<MyAccountState?> {
         await VAppPref.setMap(SStorageKeys.myProfile.name, newProfile.toMap());
         AppAuth.setProfileNull();
         update();
+        VAppAlert.showSuccessSnackBarWithoutContext(
+          message: 'Name updated successfully',
+        );
         //  context.pop();
       },
     );
@@ -148,6 +238,9 @@ class MyAccountController extends SLoadingController<MyAccountState?> {
         await VAppPref.setMap(SStorageKeys.myProfile.name, newProfile.toMap());
         AppAuth.setProfileNull();
         update();
+        VAppAlert.showSuccessSnackBarWithoutContext(
+          message: 'Bio updated successfully',
+        );
         //context.pop();
       },
     );
@@ -175,6 +268,9 @@ class MyAccountController extends SLoadingController<MyAccountState?> {
         await VAppPref.setMap(SStorageKeys.myProfile.name, newProfile.toMap());
         AppAuth.setProfileNull();
         update();
+        VAppAlert.showSuccessSnackBarWithoutContext(
+          message: 'Phone number updated successfully',
+        );
         //context.pop();
       },
     );
@@ -215,6 +311,9 @@ class MyAccountController extends SLoadingController<MyAccountState?> {
         await VAppPref.setMap(SStorageKeys.myProfile.name, newProfile.toMap());
         AppAuth.setProfileNull();
         update();
+        VAppAlert.showSuccessSnackBarWithoutContext(
+          message: 'Gender updated successfully',
+        );
       },
     );
   }

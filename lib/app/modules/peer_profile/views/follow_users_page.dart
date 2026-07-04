@@ -67,15 +67,19 @@ class _FollowUsersPageState extends State<FollowUsersPage> {
           builder: (_, value, ___) {
             final err = (value.stateError ?? '').toLowerCase();
             final isPrivate = err.contains('private');
-            if (!_privacyDialogShown && isPrivate && value.loadingState == VChatLoadingState.error) {
+            if (!_privacyDialogShown &&
+                isPrivate &&
+                value.loadingState == VChatLoadingState.error) {
               _privacyDialogShown = true;
               WidgetsBinding.instance.addPostFrameCallback((_) async {
                 if (!mounted) return;
+                final listName =
+                    widget.isFollowersTab ? 'followers' : 'following';
                 await showCupertinoDialog(
                   context: context,
                   builder: (ctx) => CupertinoAlertDialog(
                     title: const Text('List is private'),
-                    content: const Text('This user has hidden their followers/following list.'),
+                    content: Text('This user has hidden their $listName list.'),
                     actions: [
                       CupertinoDialogAction(
                         isDefaultAction: true,

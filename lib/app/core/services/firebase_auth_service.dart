@@ -8,6 +8,7 @@ class FirebaseAuthService {
   static final FirebaseAuth _auth = FirebaseAuth.instance;
   static String? _verificationId;
   static int? _resendToken;
+  static String? _verifiedIdToken;
 
   /// Initialize Firebase Auth (call this in main.dart before runApp)
   static void initialize() {
@@ -34,6 +35,8 @@ class FirebaseAuthService {
           if (kDebugMode) {
             print('Phone verification completed automatically');
           }
+          final userCredential = await _auth.signInWithCredential(credential);
+          _verifiedIdToken = await userCredential.user?.getIdToken();
           onAutoVerified();
         },
         verificationFailed: (FirebaseAuthException e) {
@@ -119,7 +122,8 @@ class FirebaseAuthService {
       );
 
       // Sign in with credential
-      final UserCredential userCredential = await _auth.signInWithCredential(credential);
+      final UserCredential userCredential =
+          await _auth.signInWithCredential(credential);
       final User? user = userCredential.user;
 
       if (user == null) {
@@ -128,6 +132,7 @@ class FirebaseAuthService {
 
       // Get ID token
       final String? idToken = await user.getIdToken();
+      _verifiedIdToken = idToken;
       return idToken;
     } catch (e) {
       if (kDebugMode) {
@@ -142,6 +147,7 @@ class FirebaseAuthService {
     await _auth.signOut();
     _verificationId = null;
     _resendToken = null;
+    _verifiedIdToken = null;
   }
 
   /// Get current Firebase user
@@ -152,6 +158,9 @@ class FirebaseAuthService {
 
   /// Get ID token for current user
   static Future<String?> getIdToken() async {
+    if (_verifiedIdToken != null && _verifiedIdToken!.isNotEmpty) {
+      return _verifiedIdToken;
+    }
     final user = _auth.currentUser;
     if (user == null) return null;
     return await user.getIdToken();
@@ -161,5 +170,6 @@ class FirebaseAuthService {
   static void clearState() {
     _verificationId = null;
     _resendToken = null;
+    _verifiedIdToken = null;
   }
 }

@@ -18,7 +18,7 @@ class AuthApiService {
   static AuthApiService init({Uri? baseUrl, String? accessToken}) {
     _authApi ??= AuthApi.create(
       accessToken: accessToken,
-      baseUrl: baseUrl ?? SConstants.sApiBaseUrl,
+      baseUrl: baseUrl,
     );
     return AuthApiService._();
   }
@@ -60,13 +60,27 @@ class AuthApiService {
     throwIfNotSuccess(res);
   }
 
-  Future<void> sendOtpRegister(String email) async {
-    final Response res = await _authApi!.sendOtpRegister({'email': email});
+  Future<void> verifyOtpResetPasswordOnly(String email, String code) async {
+    final Response res = await _authApi!.verifyOtpResetPasswordOnly({
+      'email': email,
+      'code': code,
+    });
     throwIfNotSuccess(res);
   }
 
-  Future<void> verifyOtpRegister({required String email, required String code}) async {
-    final Response res = await _authApi!.verifyOtpRegister({'email': email, 'code': code});
+  Future<void> sendOtpRegister(
+    String email, {
+    RegisterMethod method = RegisterMethod.email,
+  }) async {
+    final Response res =
+        await _authApi!.sendOtpRegister({'email': email, 'method': method.name});
+    throwIfNotSuccess(res);
+  }
+
+  Future<void> verifyOtpRegister(
+      {required String email, required String code}) async {
+    final Response res =
+        await _authApi!.verifyOtpRegister({'email': email, 'code': code});
     throwIfNotSuccess(res);
   }
 
@@ -75,6 +89,7 @@ class AuthApiService {
     String fullName,
     String password, {
     String? profession,
+    String? dateOfBirth,
     RegisterMethod method = RegisterMethod.email,
   }) async {
     final body = <String, dynamic>{
@@ -88,13 +103,19 @@ class AuthApiService {
     if (p != null && p.isNotEmpty) {
       body['profession'] = p;
     }
+    final dob = dateOfBirth?.trim();
+    if (dob != null && dob.isNotEmpty) {
+      body['dateOfBirth'] = dob;
+    }
 
     final Response res = await _authApi!.sendLinkRegister(body);
     throwIfNotSuccess(res);
   }
 
-  Future<void> verifyLinkRegister({required String email, required String token}) async {
-    final Response res = await _authApi!.verifyLinkRegister({'email': email, 'token': token});
+  Future<void> verifyLinkRegister(
+      {required String email, required String otp}) async {
+    final Response res =
+        await _authApi!.verifyLinkRegister({'email': email, 'otp': otp});
     throwIfNotSuccess(res);
   }
 
@@ -103,7 +124,8 @@ class AuthApiService {
     if (image != null) {
       file = await VPlatforms.getMultipartFile(source: image);
     }
-    final Response res = await _authApi!.register(dto.toListOfPartValue(), file);
+    final Response res =
+        await _authApi!.register(dto.toListOfPartValue(), file);
     throwIfNotSuccess(res);
     await _saveAccessTokenFromBody(res.body as Map<String, dynamic>);
   }
@@ -130,6 +152,7 @@ class AuthApiService {
     required String deviceId,
     required String platform,
     String? profession,
+    String? dateOfBirth,
     String? language,
     Map<String, dynamic>? deviceInfo,
     String? pushKey,
@@ -145,6 +168,10 @@ class AuthApiService {
     final p = profession?.trim();
     if (p != null && p.isNotEmpty) {
       body['profession'] = p;
+    }
+    final dob = dateOfBirth?.trim();
+    if (dob != null && dob.isNotEmpty) {
+      body['dateOfBirth'] = dob;
     }
     if (language != null) {
       body['language'] = language;
@@ -197,4 +224,3 @@ class AuthApiService {
     return responseBody;
   }
 }
-

@@ -40,6 +40,27 @@ final class _$UserFilesApi extends UserFilesApi {
   }
 
   @override
+  Future<Response<dynamic>> getPrivateMedia({
+    int? page,
+    int? limit,
+    String? fileType,
+  }) {
+    final Uri $url = Uri.parse('user/files/private-media');
+    final Map<String, dynamic> $params = <String, dynamic>{
+      'page': page,
+      'limit': limit,
+      'fileType': fileType,
+    };
+    final Request $request = Request(
+      'GET',
+      $url,
+      client.baseUrl,
+      parameters: $params,
+    );
+    return client.send<dynamic, dynamic>($request);
+  }
+
+  @override
   Future<Response<dynamic>> deleteFile(String fileId) {
     final Uri $url = Uri.parse('user/files/${fileId}');
     final Request $request = Request(
@@ -51,8 +72,33 @@ final class _$UserFilesApi extends UserFilesApi {
   }
 
   @override
+  Future<Response<dynamic>> deletePrivateMedia(String fileId) {
+    final Uri $url = Uri.parse('user/files/private-media/${fileId}');
+    final Request $request = Request(
+      'DELETE',
+      $url,
+      client.baseUrl,
+    );
+    return client.send<dynamic, dynamic>($request);
+  }
+
+  @override
   Future<Response<dynamic>> deleteMultipleFiles(Map<String, dynamic> body) {
     final Uri $url = Uri.parse('user/files');
+    final $body = body;
+    final Request $request = Request(
+      'DELETE',
+      $url,
+      client.baseUrl,
+      body: $body,
+    );
+    return client.send<dynamic, dynamic>($request);
+  }
+
+  @override
+  Future<Response<dynamic>> deleteMultiplePrivateMedia(
+      Map<String, dynamic> body) {
+    final Uri $url = Uri.parse('user/files/private-media');
     final $body = body;
     final Request $request = Request(
       'DELETE',
@@ -77,6 +123,25 @@ final class _$UserFilesApi extends UserFilesApi {
   @override
   Future<Response<dynamic>> uploadFiles(MultipartFile file) {
     final Uri $url = Uri.parse('user/files/upload');
+    final List<PartValue> $parts = <PartValue>[
+      PartValueFile<MultipartFile>(
+        'file',
+        file,
+      )
+    ];
+    final Request $request = Request(
+      'POST',
+      $url,
+      client.baseUrl,
+      parts: $parts,
+      multipart: true,
+    );
+    return client.send<dynamic, dynamic>($request);
+  }
+
+  @override
+  Future<Response<dynamic>> uploadPrivateMedia(MultipartFile file) {
+    final Uri $url = Uri.parse('user/files/private-media/upload');
     final List<PartValue> $parts = <PartValue>[
       PartValueFile<MultipartFile>(
         'file',

@@ -18,11 +18,21 @@ class MusicHistoryPage extends StatefulWidget {
 
 class _MusicHistoryPageState extends State<MusicHistoryPage> {
   late List<Map<String, dynamic>> _items;
+  String _searchQuery = '';
+  final _searchController = TextEditingController();
+  final _searchFocusNode = FocusNode();
 
   @override
   void initState() {
     super.initState();
     _items = List<Map<String, dynamic>>.from(widget.historyItems);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
   }
 
   IconData _iconFor(Map<String, dynamic> item) {
@@ -53,6 +63,16 @@ class _MusicHistoryPageState extends State<MusicHistoryPage> {
     });
   }
 
+  List<Map<String, dynamic>> get _filteredItems {
+    if (_searchQuery.isEmpty) return _items;
+    return _items.where((h) {
+      final title = (h['title'] ?? '').toString().toLowerCase();
+      final uploader =
+          (h['uploaderData']?['fullName'] ?? '').toString().toLowerCase();
+      return title.contains(_searchQuery) || uploader.contains(_searchQuery);
+    }).toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     return CupertinoPageScaffold(
@@ -72,25 +92,44 @@ class _MusicHistoryPageState extends State<MusicHistoryPage> {
         ),
       ),
       child: SafeArea(
-        child: _items.isEmpty
-            ? const Center(
-                child: Text(
-                  'No history yet',
-                  style: TextStyle(
-                    color: CupertinoColors.systemGrey,
-                    fontSize: 15,
-                  ),
-                ),
-              )
-            : ListView.separated(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                itemCount: _items.length,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: CupertinoSearchTextField(
+                controller: _searchController,
+                focusNode: _searchFocusNode,
+                placeholder: 'Search history...',
+                onChanged: (value) {
+                  setState(() => _searchQuery = value.trim().toLowerCase());
+                },
+                onSuffixTap: () {
+                  _searchController.clear();
+                  _searchFocusNode.unfocus();
+                  setState(() => _searchQuery = '');
+                },
+              ),
+            ),
+            Expanded(
+              child: _items.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No history yet',
+                        style: TextStyle(
+                          color: CupertinoColors.systemGrey,
+                          fontSize: 15,
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      itemCount: _filteredItems.length,
                 separatorBuilder: (_, __) => Container(
                   height: 1,
                   color: CupertinoColors.separator,
                 ),
                 itemBuilder: (_, i) {
-                  final h = _items[i];
+                  final h = _filteredItems[i];
                   final title = (h['title'] ?? 'Untitled').toString().trim();
                   final uploader =
                       (h['uploaderData']?['fullName'] ?? '').toString();
@@ -127,6 +166,9 @@ class _MusicHistoryPageState extends State<MusicHistoryPage> {
                   );
                 },
               ),
+            ),
+          ],
+        ),
       ),
     );
   }

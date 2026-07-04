@@ -238,8 +238,9 @@ class _MusicHomeViewState extends State<MusicHomeView> {
       'fileUrl': (item['fileUrl'] ?? item['url'] ?? '').toString(),
       'mediaType': (item['mediaType'] ?? '').toString(),
       'mimeType': (item['mimeType'] ?? '').toString(),
-      'thumbnailUrl': (item['thumbnailUrl'] ?? item['thumbUrl'] ?? '')
-          .toString(),
+      'thumbnailUrl':
+          (item['thumbnailUrl'] ?? item['thumbUrl'] ?? '').toString(),
+      'subtitles': item['subtitles'],
       'uploaderData': item['uploaderData'] is Map
           ? Map<String, dynamic>.from(item['uploaderData'])
           : null,
@@ -254,8 +255,8 @@ class _MusicHomeViewState extends State<MusicHomeView> {
       if (raw is! List) return;
       _watchHistory
         ..clear()
-        ..addAll(raw.whereType<Map>().map((e) =>
-            Map<String, dynamic>.from(e.map((k, v) => MapEntry(k.toString(), v)))));
+        ..addAll(raw.whereType<Map>().map((e) => Map<String, dynamic>.from(
+            e.map((k, v) => MapEntry(k.toString(), v)))));
     } catch (_) {
       _watchHistory.clear();
     }
@@ -383,14 +384,24 @@ class _MusicHomeViewState extends State<MusicHomeView> {
     if (id == null || id.isEmpty || _isOwner(item)) return;
 
     try {
-      await _api.incrementPlay(id);
+      final updated = await _api.incrementPlay(id);
+      final updatedCount =
+          _asInt(updated['playsCount'] ?? (_asInt(item['playsCount']) + 1));
       if (!mounted) return;
       setState(() {
-        final index = _items.indexOf(item);
-        if (index != -1) {
-          final current = (_items[index]['playsCount'] ?? 0) as int;
-          _items[index]['playsCount'] = current + 1;
+        void updateList(List<Map<String, dynamic>> list) {
+          final idx = list.indexWhere((e) => _idOf(e) == id);
+          if (idx != -1) {
+            list[idx]['playsCount'] = updatedCount;
+          }
         }
+
+        for (final list in _tabItems.values) {
+          updateList(list);
+        }
+        updateList(_items);
+        updateList(_fetchedItems);
+        updateList(_watchHistory);
       });
     } catch (_) {}
   }
@@ -406,7 +417,8 @@ class _MusicHomeViewState extends State<MusicHomeView> {
     final item = sourceItems[index];
     final raw = (item['mediaUrl'] ?? item['url'] ?? '').toString();
     if (raw.isEmpty) return;
-    final fullUrl = raw.startsWith('http') ? raw : SConstants.baseMediaUrl + raw;
+    final fullUrl =
+        raw.startsWith('http') ? raw : SConstants.baseMediaUrl + raw;
 
     final mediaType = (item['mediaType'] ?? '').toString().toLowerCase();
     final mime = (item['mimeType'] ?? '').toString().toLowerCase();
@@ -424,6 +436,44 @@ class _MusicHomeViewState extends State<MusicHomeView> {
     final isAudio =
         mediaType == 'audio' || mime.startsWith('audio/') || isAudioByExt;
     final title = (item['title'] ?? 'Untitled').toString();
+    final musicId = _idOf(item);
+
+    final initialSubtitles = item['subtitles'] is Map
+        ? Map<String, dynamic>.from(item['subtitles'])
+        : null;
+
+    void updateSubtitles(Map<String, dynamic> subtitles) {
+      item['subtitles'] = subtitles;
+      final id = _idOf(item);
+      _updateItemSubtitles(id, subtitles);
+    }
+
+    Future<void> playSearchResult(
+      BuildContext ctx,
+      Map<String, dynamic> selected,
+      List<Map<String, dynamic>> results,
+    ) async {
+      final source = results.isEmpty
+          ? <Map<String, dynamic>>[selected]
+          : List<Map<String, dynamic>>.from(results);
+      var selectedIndex = _indexOfIn(source, selected);
+
+      if (selectedIndex == -1) {
+        final selectedId = _idOf(selected);
+        source.removeWhere(
+          (item) => selectedId.isNotEmpty && _idOf(item) == selectedId,
+        );
+        source.insert(0, selected);
+        selectedIndex = 0;
+      }
+
+      await _playAtIndex(
+        navContext: ctx,
+        sourceItems: source,
+        index: selectedIndex,
+        replace: true,
+      );
+    }
 
     _rememberSeen(item);
     unawaited(_incrementPlayCount(item));
@@ -433,8 +483,12 @@ class _MusicHomeViewState extends State<MusicHomeView> {
           ? MusicAudioPlayerPage(
               title: title,
               url: fullUrl,
+              musicId: musicId,
+              initialSubtitles: initialSubtitles,
               autoPlay: true,
+              onSubtitlesUpdated: updateSubtitles,
               onDownload: (ctx) => _downloadFromPlayer(ctx, fullUrl),
+              onPlaySearchResult: playSearchResult,
               onPlayPrevious: (ctx) async {
                 final prev =
                     _previousPlayableIndexIn(sourceItems, fromIndex: index);
@@ -447,7 +501,8 @@ class _MusicHomeViewState extends State<MusicHomeView> {
                 );
               },
               onPlayNext: (ctx) async {
-                final next = _nextPlayableIndexIn(sourceItems, fromIndex: index);
+                final next =
+                    _nextPlayableIndexIn(sourceItems, fromIndex: index);
                 if (next == -1) return;
                 await _playAtIndex(
                   navContext: ctx,
@@ -460,8 +515,12 @@ class _MusicHomeViewState extends State<MusicHomeView> {
           : MusicVideoPlayerPage(
               title: title,
               url: fullUrl,
+              musicId: musicId,
+              initialSubtitles: initialSubtitles,
               autoPlay: true,
+              onSubtitlesUpdated: updateSubtitles,
               onDownload: (ctx) => _downloadFromPlayer(ctx, fullUrl),
+              onPlaySearchResult: playSearchResult,
               onPlayPrevious: (ctx) async {
                 final prev =
                     _previousPlayableIndexIn(sourceItems, fromIndex: index);
@@ -474,7 +533,8 @@ class _MusicHomeViewState extends State<MusicHomeView> {
                 );
               },
               onPlayNext: (ctx) async {
-                final next = _nextPlayableIndexIn(sourceItems, fromIndex: index);
+                final next =
+                    _nextPlayableIndexIn(sourceItems, fromIndex: index);
                 if (next == -1) return;
                 await _playAtIndex(
                   navContext: ctx,
@@ -497,6 +557,24 @@ class _MusicHomeViewState extends State<MusicHomeView> {
 
   String _idOf(Map<String, dynamic> item) {
     return (item['_id'] ?? item['id'] ?? '').toString();
+  }
+
+  void _updateItemSubtitles(String id, Map<String, dynamic> subtitles) {
+    if (id.isEmpty || !mounted) return;
+    setState(() {
+      void updateList(List<Map<String, dynamic>> list) {
+        final idx = list.indexWhere((e) => _idOf(e) == id);
+        if (idx != -1) list[idx]['subtitles'] = subtitles;
+      }
+
+      for (final list in _tabItems.values) {
+        updateList(list);
+      }
+      updateList(_items);
+      updateList(_fetchedItems);
+      updateList(_watchHistory);
+    });
+    unawaited(_saveHistory());
   }
 
   int _asInt(dynamic v) {
@@ -586,6 +664,7 @@ class _MusicHomeViewState extends State<MusicHomeView> {
         'mediaType': mediaType,
         'mimeType': mimeType,
         'thumbnailUrl': thumb,
+        'subtitles': item['subtitles'],
         'uploaderName': uploaderName,
         'uploaderImage': uploaderImage,
         'uploaderId': uploaderId,
@@ -1266,7 +1345,8 @@ class _MusicHomeViewState extends State<MusicHomeView> {
 
     // Extra fallback for persisted maps that may have a different shape.
     final map = profile.toMap();
-    final me = (map['me'] as Map<String, dynamic>?) ?? const <String, dynamic>{};
+    final me =
+        (map['me'] as Map<String, dynamic>?) ?? const <String, dynamic>{};
     addCandidate((me['email'] ?? '').toString(), RegisterMethod.email);
     addCandidate((me['phoneNumber'] ?? '').toString(), RegisterMethod.phone);
 
@@ -1930,13 +2010,31 @@ class _MusicHomeViewState extends State<MusicHomeView> {
             item['isLiked'] = false;
             item['likesCount'] = item['likesCount'] ?? 0;
             item['commentsCount'] = item['commentsCount'] ?? 0;
+            item['subtitles'] = item['subtitles'] is Map
+                ? item['subtitles']
+                : <String, dynamic>{
+                    'status': 'processing',
+                    'text': '',
+                    'segments': <Map<String, dynamic>>[],
+                  };
           }
           _fetchedItems.insert(0, item);
           _applyLocalFilterInPlace();
         });
+        if (choice != 'pdf') {
+          final id = _idOf(item);
+          if (id.isNotEmpty) {
+            unawaited(_api.generateSubtitles(musicId: id).then((subtitles) {
+              item['subtitles'] = subtitles;
+              _updateItemSubtitles(id, subtitles);
+            }).catchError((_) {}));
+          }
+        }
         VAppAlert.showSuccessSnackBar(
           context: context,
-          message: 'Uploaded successfully',
+          message: choice == 'pdf'
+              ? 'Uploaded successfully'
+              : 'Uploaded. Lyrics/subtitles will generate while it plays.',
         );
       } catch (e) {
         if (!mounted) return;

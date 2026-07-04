@@ -12,8 +12,10 @@ import 'package:super_up/app/core/models/post/post_model.dart';
 import 'package:super_up/app/modules/peer_profile/views/peer_profile_view.dart';
 import 'package:super_up/app/modules/post/hashtag_posts_screen.dart';
 import 'package:super_up/app/modules/post/post_feed_widget.dart';
+import 'package:super_up/app/modules/storage/views/private_media_gallery_page.dart';
 import 'package:super_up/app/modules/music/services/music_api_service.dart';
 import 'package:super_up/app/modules/music/views/music_audio_player_page.dart';
+import 'package:super_up/app/modules/music/views/music_video_player_page.dart';
 import 'package:super_up_core/super_up_core.dart';
 import 'package:v_platform/v_platform.dart';
 
@@ -397,25 +399,40 @@ class _UserMusicGalleryViewState extends State<UserMusicGalleryView> {
   void _openItem(Map<String, dynamic> item) {
     final mediaUrl = (item['mediaUrl'] ?? item['url'] ?? '').toString();
     final title = _titleOf(item);
+    final musicId = _idOf(item);
+    final initialSubtitles = item['subtitles'] is Map
+        ? Map<String, dynamic>.from(item['subtitles'])
+        : null;
+
+    void updateSubtitles(Map<String, dynamic> subtitles) {
+      item['subtitles'] = subtitles;
+      if (!mounted || musicId.isEmpty) return;
+      setState(() {
+        final idx = _items.indexWhere((e) => _idOf(e) == musicId);
+        if (idx != -1) _items[idx]['subtitles'] = subtitles;
+      });
+    }
 
     if (_isAudio(item) && mediaUrl.isNotEmpty) {
       context.toPage(
         MusicAudioPlayerPage(
           title: title,
           url: mediaUrl,
+          musicId: musicId.isEmpty ? null : musicId,
+          initialSubtitles: initialSubtitles,
+          onSubtitlesUpdated: updateSubtitles,
           autoPlay: true,
         ),
       );
     } else if (_isVideo(item) && mediaUrl.isNotEmpty) {
-      // Navigate to video player
       context.toPage(
-        VVideoPlayer(
-          showDownload: true,
-          platformFileSource: VPlatformFile.fromUrl(
-            networkUrl: mediaUrl,
-          ),
-          downloadingLabel: 'Downloading...',
-          successfullyDownloadedInLabel: 'Downloaded successfully',
+        MusicVideoPlayerPage(
+          title: title,
+          url: mediaUrl,
+          musicId: musicId.isEmpty ? null : musicId,
+          initialSubtitles: initialSubtitles,
+          onSubtitlesUpdated: updateSubtitles,
+          autoPlay: true,
         ),
       );
     }
@@ -685,8 +702,58 @@ class _UserMusicGalleryViewState extends State<UserMusicGalleryView> {
     );
   }
 
+  Widget _buildPrivateMediaShortcut() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      child: CupertinoButton(
+        padding: EdgeInsets.zero,
+        onPressed: () {
+          context.toPage(
+            const PrivateMediaGalleryPage(),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: CupertinoColors.systemGrey6,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: CupertinoColors.separator.withValues(alpha: 0.4),
+            ),
+          ),
+          child: const Row(
+            children: [
+              Icon(
+                CupertinoIcons.lock_fill,
+                color: Color(0xFF4D7CFE),
+              ),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Private Media',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: CupertinoColors.label,
+                  ),
+                ),
+              ),
+              Icon(
+                CupertinoIcons.chevron_forward,
+                color: CupertinoColors.systemGrey2,
+                size: 18,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isMyGallery = widget.userId == AppAuth.myId;
+
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(
         middle: Row(
@@ -721,10 +788,18 @@ class _UserMusicGalleryViewState extends State<UserMusicGalleryView> {
       child: SafeArea(
         child: RefreshIndicator(
           onRefresh: () => _fetchItems(reset: true),
-          child: _items.isEmpty && _socialPosts.isEmpty && !_loading && !_isSocialLoading
+          child: _items.isEmpty &&
+                  _socialPosts.isEmpty &&
+                  !_loading &&
+                  !_isSocialLoading &&
+                  !isMyGallery
               ? _buildEmptyState()
               : CustomScrollView(
                   slivers: [
+                    if (isMyGallery)
+                      SliverToBoxAdapter(
+                        child: _buildPrivateMediaShortcut(),
+                      ),
                     if (_items.isNotEmpty || _loading) ...[
                       const SliverToBoxAdapter(
                         child: Padding(
@@ -800,6 +875,15 @@ class _UserMusicGalleryViewState extends State<UserMusicGalleryView> {
                         child: Center(
                           child: CupertinoActivityIndicator(),
                         ),
+                      ),
+                    if (isMyGallery &&
+                        _items.isEmpty &&
+                        _socialPosts.isEmpty &&
+                        !_loading &&
+                        !_isSocialLoading)
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: _buildEmptyState(),
                       ),
                   ],
                 ),

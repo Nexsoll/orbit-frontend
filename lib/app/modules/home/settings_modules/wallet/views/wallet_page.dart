@@ -10,7 +10,10 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:super_up/app/core/services/balance_service.dart';
 import 'package:super_up_core/super_up_core.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:super_up/app/core/api_service/profile/profile_api_service.dart';
+import 'package:super_up/app/modules/send_money/views/send_money_user_picker.dart';
+import 'package:modal_bottom_sheet/modal_bottom_sheet.dart';
+import 'package:get_it/get_it.dart';
 
 class WalletPage extends StatefulWidget {
   const WalletPage({super.key});
@@ -19,19 +22,16 @@ class WalletPage extends StatefulWidget {
   State<WalletPage> createState() => _WalletPageState();
 }
 
-class _WalletPageState extends State<WalletPage> with WidgetsBindingObserver {
+class _WalletPageState extends State<WalletPage> {
   final _amountCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
   final _accountNumberCtrl = TextEditingController();
+  final _bankCodeCtrl = TextEditingController();
   bool _loading = false;
   bool _isWithdraw = false;
+  String _withdrawProvider = 'MPESA';
   List<Map<String, dynamic>>? _history;
   bool _historyLoading = false;
-
-  // PesaPal pending verification
-  String? _pendingOrderTrackingId;
-  String? _pendingRedirectUrl;
-  bool _isPesapalVerifyDialogOpen = false;
-  bool _pesapalVerifying = false;
 
   String _extractBackendMessage(String body) {
     try {
@@ -67,23 +67,24 @@ class _WalletPageState extends State<WalletPage> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     // Always refresh balance when opening wallet
     BalanceService.instance.init();
     _loadHistory();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _verifyPendingPesapalPayment();
-    }
+    // Pre-fill phone number from profile
+    try {
+      final myPhone = AppAuth.myProfile.phoneNumber;
+      if (myPhone != null && myPhone.isNotEmpty) {
+        _phoneCtrl.text = myPhone;
+      }
+    } catch (_) {}
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _amountCtrl.dispose();
+    _phoneCtrl.dispose();
+    _accountNumberCtrl.dispose();
+    _bankCodeCtrl.dispose();
     super.dispose();
   }
 
@@ -121,20 +122,34 @@ class _WalletPageState extends State<WalletPage> with WidgetsBindingObserver {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: CupertinoButton(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      color: Colors.white24,
-                      borderRadius: BorderRadius.circular(8),
-                      onPressed: _loading ? null : _onTopUpPressed,
-                      child: const Text(
-                        'Top up',
-                        style: TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.w600),
+                  Row(
+                    children: [
+                      CupertinoButton(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(8),
+                        onPressed: _loading ? null : _onTopUpPressed,
+                        child: const Text(
+                          'Top up',
+                          style: TextStyle(
+                              color: Colors.white, fontWeight: FontWeight.w600),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 12),
+                      CupertinoButton(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(8),
+                        onPressed: _loading ? null : _onSendMoneyTap,
+                        child: const Text(
+                          'Send Money',
+                          style: TextStyle(
+                              color: Colors.black, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -149,6 +164,7 @@ class _WalletPageState extends State<WalletPage> with WidgetsBindingObserver {
                       _isWithdraw = val;
                       _amountCtrl.clear();
                       _accountNumberCtrl.clear();
+                      _bankCodeCtrl.clear();
                     });
                   }
                 },
@@ -170,14 +186,63 @@ class _WalletPageState extends State<WalletPage> with WidgetsBindingObserver {
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 12),
+            if (!_isWithdraw) ...[
+              CupertinoTextField(
+                controller: _phoneCtrl,
+                placeholder: 'M-Pesa phone number (e.g. 07XXXXXXXX)',
+                keyboardType: TextInputType.phone,
+                clearButtonMode: OverlayVisibilityMode.editing,
+                prefix: const Padding(
+                  padding: EdgeInsets.only(left: 8.0),
+                  child: Icon(CupertinoIcons.phone_fill),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             if (_isWithdraw) ...[
+              CupertinoSlidingSegmentedControl<String>(
+                groupValue: _withdrawProvider,
+                onValueChanged: (value) {
+                  if (_loading || value == null) return;
+                  setState(() {
+                    _withdrawProvider = value;
+                    _bankCodeCtrl.clear();
+                  });
+                },
+                children: const {
+                  'MPESA': Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8),
+                    child: Text('M-Pesa'),
+                  ),
+                  'AIRTEL_MONEY': Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8),
+                    child: Text('Airtel'),
+                  ),
+                  'BANK': Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8),
+                    child: Text('Bank'),
+                  ),
+                },
+              ),
+              const SizedBox(height: 12),
               CupertinoTextField(
                 controller: _accountNumberCtrl,
-                placeholder: 'Phone / Account Number',
-                keyboardType: TextInputType.phone,
+                placeholder: _withdrawAccountPlaceholder,
+                keyboardType: _withdrawProvider == 'BANK'
+                    ? TextInputType.text
+                    : TextInputType.phone,
                 clearButtonMode: OverlayVisibilityMode.editing,
               ),
               const SizedBox(height: 12),
+              if (_withdrawProvider == 'BANK') ...[
+                CupertinoTextField(
+                  controller: _bankCodeCtrl,
+                  placeholder: 'Bank code',
+                  keyboardType: TextInputType.text,
+                  clearButtonMode: OverlayVisibilityMode.editing,
+                ),
+                const SizedBox(height: 12),
+              ],
             ],
             CupertinoTextField(
               controller: _amountCtrl,
@@ -188,7 +253,9 @@ class _WalletPageState extends State<WalletPage> with WidgetsBindingObserver {
             ),
             const SizedBox(height: 20),
             CupertinoButton.filled(
-              onPressed: _loading ? null : (_isWithdraw ? _onWithdrawPressed : _onTopUpPressed),
+              onPressed: _loading
+                  ? null
+                  : (_isWithdraw ? _onWithdrawPressed : _onTopUpPressed),
               child: _loading
                   ? const SizedBox(
                       height: 18,
@@ -203,15 +270,15 @@ class _WalletPageState extends State<WalletPage> with WidgetsBindingObserver {
             const SizedBox(height: 10),
             if (!_isWithdraw)
               const Text(
-                'After you press Top up, a payment page will open for you to complete '
-                'payment via M-Pesa, Visa, Mastercard, or other methods supported by PesaPal. '
-                'Return to the app to verify and update your balance.',
+                'After you press Top up, you will receive an M-Pesa prompt on your phone. '
+                'Enter your M-Pesa PIN to complete the payment. '
+                'Your wallet balance will update automatically.',
                 style: TextStyle(color: Colors.black54, fontSize: 12),
               )
             else
               const Text(
-                'Withdrawal requests are sent to PesaPal for processing. Withdrawals '
-                'may take some time to reflect in your account. Make sure to enter the correct account details.',
+                'Withdrawal requests are processed via M-Pesa. Withdrawals '
+                'may take some time to reflect in your account. Minimum withdrawal is KES 50.',
                 style: TextStyle(color: Colors.black54, fontSize: 12),
               ),
             const SizedBox(height: 24),
@@ -245,17 +312,28 @@ class _WalletPageState extends State<WalletPage> with WidgetsBindingObserver {
                 child: CircularProgressIndicator(strokeWidth: 2),
               ))
             else
-              ..._history!.map((h) => _WalletHistoryItem(item: h)).toList(),
+              ..._history!.map((h) => _WalletHistoryItem(item: h)),
           ],
         ),
       ),
     );
   }
 
+  String get _withdrawAccountPlaceholder {
+    if (_withdrawProvider == 'BANK') return 'Bank account number';
+    if (_withdrawProvider == 'AIRTEL_MONEY') return 'Airtel Money number';
+    return 'M-Pesa phone number';
+  }
+
   Future<void> _onTopUpPressed() async {
     FocusScope.of(context).unfocus();
     final amount = double.tryParse(_amountCtrl.text.trim());
+    final phone = _phoneCtrl.text.trim();
 
+    if (phone.isEmpty) {
+      await _showErrorDialog('Enter your M-Pesa phone number');
+      return;
+    }
     if (amount == null || amount <= 0) {
       await _showErrorDialog('Enter a valid amount');
       return;
@@ -264,40 +342,24 @@ class _WalletPageState extends State<WalletPage> with WidgetsBindingObserver {
     setState(() => _loading = true);
     try {
       VAppAlert.showLoading(
-          context: context, message: 'Initiating PesaPal payment...');
-      final tx = await _initiatePesapalCheckout(amount: amount);
+          context: context, message: 'Sending M-Pesa prompt...');
+      final tx = await _initiateMpesaStkPush(amount: amount, phone: phone);
       _hideAnyLoadingDialog();
       if (tx == null) return;
 
-      final redirectUrl = (tx['redirectUrl'] ?? '').toString();
-      final orderTrackingId = (tx['orderTrackingId'] ?? '').toString();
+      final txId = (tx['id'] ?? '').toString();
+      final checkoutRequestId =
+          (tx['checkoutRequestId'] ?? '').toString();
 
-      if (orderTrackingId.isEmpty) {
-        await _showErrorDialog('Failed to start PesaPal payment');
+      if (txId.isEmpty) {
+        await _showErrorDialog('Failed to initiate M-Pesa payment');
         return;
       }
 
-      if (redirectUrl.isNotEmpty) {
-        final uri = Uri.tryParse(redirectUrl);
-        if (uri != null) {
-          final ok = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
-          if (!ok) {
-            final ok2 =
-                await launchUrl(uri, mode: LaunchMode.externalApplication);
-            if (!ok2) {
-              await _showErrorDialog('Failed to open PesaPal payment page');
-            }
-          }
-        } else {
-          await _showErrorDialog('PesaPal payment URL is invalid');
-        }
-      } else {
-        await _showErrorDialog('PesaPal payment URL is missing');
-      }
-
-      _pendingOrderTrackingId = orderTrackingId;
-      _pendingRedirectUrl = redirectUrl;
-      await _showPesapalVerifyDialog(orderTrackingId, redirectUrl: redirectUrl);
+      await _showMpesaStatusDialog(
+        txId: txId,
+        checkoutRequestId: checkoutRequestId,
+      );
     } catch (e) {
       _hideAnyLoadingDialog();
       if (e is TimeoutException) {
@@ -317,13 +379,24 @@ class _WalletPageState extends State<WalletPage> with WidgetsBindingObserver {
     FocusScope.of(context).unfocus();
     final amount = double.tryParse(_amountCtrl.text.trim());
     final account = _accountNumberCtrl.text.trim();
+    final bankCode = _bankCodeCtrl.text.trim();
 
-    if (amount == null || amount <= 0) {
-      await _showErrorDialog('Enter a valid amount');
+    if (amount == null || amount < 50) {
+      await _showErrorDialog('Minimum withdrawal amount is KES 50');
+      return;
+    }
+    final balance = BalanceService.instance.balance;
+    if (amount > balance) {
+      await _showErrorDialog('Not sufficient balance');
       return;
     }
     if (account.isEmpty) {
-      await _showErrorDialog('Enter your account number or phone');
+      await _showErrorDialog(
+          'Enter ${_withdrawProvider == 'BANK' ? 'your account number' : 'your phone number'}');
+      return;
+    }
+    if (_withdrawProvider == 'BANK' && bankCode.isEmpty) {
+      await _showErrorDialog('Enter your bank code');
       return;
     }
 
@@ -331,22 +404,29 @@ class _WalletPageState extends State<WalletPage> with WidgetsBindingObserver {
     try {
       VAppAlert.showLoading(
           context: context, message: 'Initiating withdrawal...');
-      await _requestWithdrawal(amount: amount, account: account);
+      final data = await _requestWithdrawal(
+        amount: amount,
+        account: account,
+        bankCode: bankCode.isEmpty ? null : bankCode,
+      );
       _hideAnyLoadingDialog();
-      
+
       if (mounted) {
         VAppAlert.showSuccessSnackBar(
-            message: 'Withdrawal request submitted', context: context);
+            message: _withdrawProvider == 'MPESA'
+                ? 'M-Pesa withdrawal initiated'
+                : 'Withdrawal request submitted',
+            context: context);
       }
-      
+
       // Update balance and history after withdrawal
-      await BalanceService.instance.init();
+      _updateBalanceFromWithdrawalResponse(data);
       await _loadHistory();
 
       // Clear fields
       _amountCtrl.clear();
       _accountNumberCtrl.clear();
-
+      _bankCodeCtrl.clear();
     } catch (e) {
       _hideAnyLoadingDialog();
       if (e is TimeoutException) {
@@ -362,8 +442,17 @@ class _WalletPageState extends State<WalletPage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _requestWithdrawal({required double amount, required String account}) async {
-    final url = Uri.parse('${SConstants.sApiBaseUrl}/payments/pesapal/withdraw');
+  Future<Map<String, dynamic>> _requestWithdrawal({
+    required double amount,
+    required String account,
+    String? bankCode,
+  }) async {
+    final isMpesa = _withdrawProvider == 'MPESA';
+    final url = Uri.parse(
+      isMpesa
+          ? '${SConstants.sApiBaseUrl}/payments/mpesa/wallet/withdraw'
+          : '${SConstants.sApiBaseUrl}/payments/pesapal/withdraw',
+    );
     final accessToken =
         VAppPref.getHashedString(key: SStorageKeys.vAccessToken.name);
     if (accessToken == null || accessToken.trim().isEmpty) {
@@ -373,12 +462,22 @@ class _WalletPageState extends State<WalletPage> with WidgetsBindingObserver {
       'Content-Type': 'application/json',
       'Authorization': 'Bearer $accessToken',
     };
-    final body = jsonEncode({
-      'amount': amount,
-      'currency': 'KES',
-      'accountNumber': account,
-      'description': 'Wallet withdrawal',
-    });
+    final body = jsonEncode(
+      isMpesa
+          ? {
+              'amount': amount,
+              'phone': account,
+              'remarks': 'Wallet withdrawal',
+            }
+          : {
+              'amount': amount,
+              'currency': 'KES',
+              'accountNumber': account,
+              'provider': _withdrawProvider,
+              if (bankCode != null) 'bankCode': bankCode,
+              'description': 'Wallet withdrawal',
+            },
+    );
     final res = await http
         .post(url, headers: headers, body: body)
         .timeout(const Duration(seconds: 20));
@@ -389,50 +488,32 @@ class _WalletPageState extends State<WalletPage> with WidgetsBindingObserver {
 
     final parsed = json.decode(res.body) as Map<String, dynamic>;
     if ((parsed['code'] as int?) != 2000 && (parsed['status'] as int?) != 200) {
-        if (!parsed.containsKey('data')) {
-             throw Exception((parsed['message'] ?? 'Failed to request withdrawal').toString());
-        }
-    }
-  }
-
-
-  Future<void> _verifyPendingPesapalPayment() async {
-    if (!mounted) return;
-    if (!_isPesapalVerifyDialogOpen) return;
-    if (_pesapalVerifying) return;
-    final trackingId = (_pendingOrderTrackingId ?? '').trim();
-    if (trackingId.isEmpty) return;
-
-    _pesapalVerifying = true;
-    try {
-      final data = await _verifyPesapalTransaction(trackingId);
-      final status = (data?['status'] ?? '').toString().trim().toLowerCase();
-      if (status == 'success') {
-        _pendingOrderTrackingId = null;
-        _pendingRedirectUrl = null;
-        if (_isPesapalVerifyDialogOpen) {
-          _isPesapalVerifyDialogOpen = false;
-          Navigator.of(context, rootNavigator: true).pop();
-        }
-        await BalanceService.instance.init();
-        await _loadHistory();
-        if (mounted) {
-          VAppAlert.showSuccessSnackBar(
-              message: 'Top up successful', context: context);
-        }
+      if (!parsed.containsKey('data')) {
+        throw Exception(
+            (parsed['message'] ?? 'Failed to request withdrawal').toString());
       }
-    } catch (_) {
-      // ignore
-    } finally {
-      _pesapalVerifying = false;
     }
+    final data = parsed['data'];
+    if (data is Map<String, dynamic>) return data;
+    return <String, dynamic>{};
   }
 
-  /// Calls backend POST /api/v1/payments/pesapal/checkout
-  Future<Map<String, dynamic>?> _initiatePesapalCheckout(
-      {required double amount}) async {
+  void _updateBalanceFromWithdrawalResponse(Map<String, dynamic> data) {
+    final newBalance = data['newBalance'];
+    if (newBalance is num) {
+      BalanceService.instance.updateBalanceFromResponse(newBalance.toDouble());
+      return;
+    }
+    BalanceService.instance.init();
+  }
+
+  /// Calls backend POST /api/v1/payments/mpesa/stk/initiate
+  Future<Map<String, dynamic>?> _initiateMpesaStkPush({
+    required double amount,
+    required String phone,
+  }) async {
     final url =
-        Uri.parse('${SConstants.sApiBaseUrl}/payments/pesapal/checkout');
+        Uri.parse('${SConstants.sApiBaseUrl}/payments/mpesa/stk/initiate');
     final accessToken =
         VAppPref.getHashedString(key: SStorageKeys.vAccessToken.name);
     if (accessToken == null || accessToken.trim().isEmpty) {
@@ -444,7 +525,8 @@ class _WalletPageState extends State<WalletPage> with WidgetsBindingObserver {
     };
     final body = jsonEncode({
       'amount': amount,
-      'currency': 'KES',
+      'phone': phone,
+      'accountReference': 'WalletTopUp',
       'description': 'Wallet top-up',
     });
     final res = await http
@@ -458,18 +540,18 @@ class _WalletPageState extends State<WalletPage> with WidgetsBindingObserver {
     final parsed = json.decode(res.body) as Map<String, dynamic>;
     if ((parsed['code'] as int?) != 2000) {
       throw Exception(
-          (parsed['message'] ?? 'Failed to start payment').toString());
+          (parsed['message'] ?? 'Failed to initiate M-Pesa payment')
+              .toString());
     }
 
     return parsed['data'] as Map<String, dynamic>;
   }
 
-  /// Calls backend GET /api/v1/payments/pesapal/verify/:orderTrackingId
-  Future<Map<String, dynamic>?> _verifyPesapalTransaction(
-      String orderTrackingId) async {
+  /// Calls backend GET /api/v1/payments/mpesa/transactions/:id
+  Future<Map<String, dynamic>?> _getMpesaTransaction(String txId) async {
     try {
       final url = Uri.parse(
-          '${SConstants.sApiBaseUrl}/payments/pesapal/verify/$orderTrackingId');
+          '${SConstants.sApiBaseUrl}/payments/mpesa/transactions/$txId');
       final accessToken =
           VAppPref.getHashedString(key: SStorageKeys.vAccessToken.name);
       final headers = <String, String>{
@@ -488,11 +570,11 @@ class _WalletPageState extends State<WalletPage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _showPesapalVerifyDialog(String orderTrackingId,
-      {String? redirectUrl}) async {
+  Future<void> _showMpesaStatusDialog({
+    required String txId,
+    required String checkoutRequestId,
+  }) async {
     bool cancelled = false;
-    _isPesapalVerifyDialogOpen = true;
-
     Timer? timer;
     bool inFlight = false;
     final startedAt = DateTime.now();
@@ -507,35 +589,41 @@ class _WalletPageState extends State<WalletPage> with WidgetsBindingObserver {
             if (!mounted) return;
             if (inFlight) return;
 
-            if (DateTime.now().difference(startedAt).inSeconds > 180) {
+            if (DateTime.now().difference(startedAt).inSeconds > 120) {
               cancelled = true;
               timer?.cancel();
-              _isPesapalVerifyDialogOpen = false;
               if (Navigator.of(ctx).canPop()) Navigator.of(ctx).pop();
               VAppAlert.showErrorSnackBar(
-                  message: 'Verification timed out. Please tap Verify now.',
+                  message:
+                      'Timed out waiting for M-Pesa. Check your balance later.',
                   context: context);
               return;
             }
 
             inFlight = true;
             try {
-              final data = await _verifyPesapalTransaction(orderTrackingId);
+              final data = await _getMpesaTransaction(txId);
               final status =
                   (data?['status'] ?? '').toString().trim().toLowerCase();
               if (status == 'success') {
                 cancelled = true;
                 timer?.cancel();
-                _pendingOrderTrackingId = null;
-                _pendingRedirectUrl = null;
-                _isPesapalVerifyDialogOpen = false;
                 if (Navigator.of(ctx).canPop()) Navigator.of(ctx).pop();
                 await BalanceService.instance.init();
                 await _loadHistory();
                 if (mounted) {
                   VAppAlert.showSuccessSnackBar(
-                      message: 'Top up successful', context: context);
+                      message: 'Top up successful!', context: context);
                 }
+              } else if (status == 'failed' ||
+                  status == 'cancelled' ||
+                  status == 'timeout') {
+                cancelled = true;
+                timer?.cancel();
+                if (Navigator.of(ctx).canPop()) Navigator.of(ctx).pop();
+                final desc = (data?['resultDesc'] ?? '').toString();
+                await _showErrorDialog(
+                    desc.isNotEmpty ? desc : 'M-Pesa payment $status');
               }
             } finally {
               inFlight = false;
@@ -544,72 +632,71 @@ class _WalletPageState extends State<WalletPage> with WidgetsBindingObserver {
         });
 
         return AlertDialog(
-          title: const Text('Complete Payment'),
+          title: const Text('M-Pesa Payment'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: const [
               CircularProgressIndicator(strokeWidth: 2),
               SizedBox(height: 12),
-              Text('Complete the payment in the opened PesaPal page...\n\n'
-                  'You can pay via M-Pesa, Visa, Mastercard, and more.'),
+              Text(
+                'An M-Pesa prompt has been sent to your phone.\n\n'
+                'Please enter your M-Pesa PIN to complete the payment.',
+              ),
             ],
           ),
           actions: [
-            if (((redirectUrl ?? _pendingRedirectUrl) ?? '').trim().isNotEmpty)
-              TextButton(
-                onPressed: () async {
-                  final toOpen = (redirectUrl ?? _pendingRedirectUrl)!.trim();
-                  final uri = Uri.tryParse(toOpen);
-                  if (uri != null) {
-                    await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
-                  }
-                },
-                child: const Text('Open again'),
-              ),
             TextButton(
               onPressed: () async {
                 if (cancelled) return;
                 try {
-                  final data = await _verifyPesapalTransaction(orderTrackingId);
+                  final data = await _getMpesaTransaction(txId);
                   final status =
                       (data?['status'] ?? '').toString().trim().toLowerCase();
                   if (status == 'success') {
-                    _pendingOrderTrackingId = null;
-                    _pendingRedirectUrl = null;
-                    _isPesapalVerifyDialogOpen = false;
+                    cancelled = true;
+                    timer?.cancel();
                     if (context.mounted) Navigator.of(ctx).pop();
                     await BalanceService.instance.init();
                     await _loadHistory();
                     if (mounted) {
                       VAppAlert.showSuccessSnackBar(
-                          message: 'Top up successful', context: context);
+                          message: 'Top up successful!', context: context);
                     }
+                    return;
+                  } else if (status == 'failed' ||
+                      status == 'cancelled' ||
+                      status == 'timeout') {
+                    cancelled = true;
+                    timer?.cancel();
+                    if (context.mounted) Navigator.of(ctx).pop();
+                    final desc = (data?['resultDesc'] ?? '').toString();
+                    await _showErrorDialog(
+                        desc.isNotEmpty ? desc : 'M-Pesa payment $status');
                     return;
                   }
                   VAppAlert.showErrorSnackBar(
-                      message: 'Payment not completed yet', context: context);
+                      message: 'Payment not completed yet. Please wait.',
+                      context: context);
                 } catch (e) {
                   await _showErrorDialog(e.toString());
                 }
               },
-              child: const Text('Verify now'),
+              child: const Text('Check now'),
             ),
             TextButton(
               onPressed: () {
                 cancelled = true;
                 timer?.cancel();
-                _isPesapalVerifyDialogOpen = false;
                 Navigator.of(ctx).pop();
               },
               child: const Text('Cancel'),
-            )
+            ),
           ],
         );
       },
     );
 
     timer?.cancel();
-    _isPesapalVerifyDialogOpen = false;
   }
 
   Future<void> _loadHistory() async {
@@ -618,7 +705,7 @@ class _WalletPageState extends State<WalletPage> with WidgetsBindingObserver {
     });
     try {
       final url = Uri.parse(
-          '${SConstants.sApiBaseUrl}/payments/pesapal/wallet/history?limit=30');
+          '${SConstants.sApiBaseUrl}/payments/mpesa/wallet/history?limit=30');
       final accessToken =
           VAppPref.getHashedString(key: SStorageKeys.vAccessToken.name);
       final headers = <String, String>{
@@ -639,6 +726,173 @@ class _WalletPageState extends State<WalletPage> with WidgetsBindingObserver {
       if (mounted) setState(() => _historyLoading = false);
     }
   }
+
+  Future<void> _onSendMoneyTap() async {
+    final selectedUser = await showCupertinoModalBottomSheet<SSearchUser?>(
+      expand: true,
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => const SendMoneyUserPicker(),
+    );
+    if (selectedUser == null) return;
+
+    final receiverId = selectedUser.baseUser.id;
+    final receiverName = selectedUser.baseUser.fullName;
+
+    // Amount dialog
+    final amtCtrl = TextEditingController();
+    String? res;
+    await showCupertinoDialog<void>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: Text('Send to $receiverName'),
+        content: Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: CupertinoTextField(
+            controller: amtCtrl,
+            placeholder: 'Amount (KES)',
+            keyboardType: const TextInputType.numberWithOptions(decimal: false),
+            autofocus: true,
+          ),
+        ),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () {
+              res = 'ok';
+              Navigator.pop(ctx);
+            },
+            child: const Text('Next'),
+          ),
+        ],
+      ),
+    );
+
+    if (res != 'ok') return;
+    final amount = num.tryParse(amtCtrl.text.trim());
+    if (amount == null || amount <= 0) {
+      VAppAlert.showErrorSnackBar(
+        context: context,
+        message: 'Enter a valid amount',
+      );
+      return;
+    }
+
+    // Password confirmation
+    final verified = await _verifyPassword();
+    if (!verified) return;
+
+    VAppAlert.showLoading(context: context);
+    try {
+      await GetIt.I.get<ProfileApiService>().sendMoney(
+        receiverId: receiverId,
+        amount: amount,
+      );
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      await BalanceService.instance.init();
+      await _loadHistory();
+
+      // Success dialog
+      await showCupertinoDialog<void>(
+        context: context,
+        builder: (ctx) => CupertinoAlertDialog(
+          title: const Text('Success'),
+          content: Text('KES ${amount.toStringAsFixed(0)} sent to $receiverName'),
+          actions: [
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      final err = e.toString().toLowerCase();
+      final message = err.contains('insufficient') || err.contains('balance')
+          ? 'Insufficient balance. Please top up your wallet.'
+          : e.toString();
+      VAppAlert.showErrorSnackBar(context: context, message: message);
+    }
+  }
+
+  Future<bool> _verifyPassword() async {
+    final passwordCtrl = TextEditingController();
+    bool confirmed = false;
+    bool obscure = true;
+    await showCupertinoDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => CupertinoAlertDialog(
+          title: const Text('Confirm with password'),
+          content: Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: CupertinoTextField(
+              controller: passwordCtrl,
+              placeholder: 'Password',
+              obscureText: obscure,
+              textInputAction: TextInputAction.done,
+              suffix: CupertinoButton(
+                padding: const EdgeInsets.only(right: 8),
+                minSize: 0,
+                onPressed: () => setDialogState(() => obscure = !obscure),
+                child: Icon(
+                  obscure ? CupertinoIcons.eye_slash : CupertinoIcons.eye,
+                  size: 18,
+                  color: CupertinoColors.systemGrey,
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () {
+                confirmed = true;
+                Navigator.pop(ctx);
+              },
+              child: const Text('Confirm'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!confirmed) return false;
+    final password = passwordCtrl.text.trim();
+    if (password.isEmpty) {
+      VAppAlert.showErrorSnackBar(
+        context: context,
+        message: 'Password is required',
+      );
+      return false;
+    }
+    VAppAlert.showLoading(context: context);
+    try {
+      await GetIt.I.get<ProfileApiService>().passwordCheck(password);
+      if (!mounted) return false;
+      Navigator.of(context, rootNavigator: true).pop();
+      return true;
+    } catch (e) {
+      if (!mounted) return false;
+      Navigator.of(context, rootNavigator: true).pop();
+      VAppAlert.showErrorSnackBar(
+        context: context,
+        message: 'Incorrect password',
+      );
+      return false;
+    }
+  }
 }
 
 class _WalletHistoryItem extends StatelessWidget {
@@ -651,9 +905,10 @@ class _WalletHistoryItem extends StatelessWidget {
     final status = (item['status'] as String?) ?? 'pending';
     final type = (item['type'] as String?) ?? 'TOPUP';
     final isWithdrawal = type == 'WITHDRAWAL';
-    
-    final confirmationCode = item['confirmationCode'] as String?;
-    final paymentMethod = item['paymentMethod'] as String?;
+
+    final confirmationCode =
+        (item['mpesaReceiptNumber'] ?? item['confirmationCode']) as String?;
+    final paymentMethod = (item['paymentMethod'] as String?) ?? 'M-Pesa';
     final createdAt = item['createdAt'];
     DateTime? dt;
     try {
@@ -691,7 +946,7 @@ class _WalletHistoryItem extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: chipColor.withOpacity(0.1),
+              color: chipColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
@@ -733,7 +988,7 @@ class _WalletHistoryItem extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
-              color: chipColor.withOpacity(0.12),
+              color: chipColor.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(

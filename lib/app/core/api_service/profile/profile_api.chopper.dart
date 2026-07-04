@@ -129,6 +129,19 @@ final class _$ProfileApi extends ProfileApi {
   }
 
   @override
+  Future<Response<dynamic>> updateDateOfBirth(Map<String, dynamic> body) {
+    final Uri $url = Uri.parse('profile/date-of-birth');
+    final $body = body;
+    final Request $request = Request(
+      'PATCH',
+      $url,
+      client.baseUrl,
+      body: $body,
+    );
+    return client.send<dynamic, dynamic>($request);
+  }
+
+  @override
   Future<Response<dynamic>> updateLocation(Map<String, dynamic> body) {
     final Uri $url = Uri.parse('profile/location');
     final $body = body;

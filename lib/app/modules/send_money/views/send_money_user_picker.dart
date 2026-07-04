@@ -24,7 +24,7 @@ class _SendMoneyUserPickerState extends State<SendMoneyUserPicker> {
   final _searchController = TextEditingController();
   final _focusNode = FocusNode();
   final _users = <SSearchUser>[];
-  UserFilterDto _filter = UserFilterDto.init();
+  UserFilterDto _filter = UserFilterDto.init().copyWith(limit: 100);
   bool _isLoading = false;
   bool _isLoadMoreActive = false;
   bool _isFinishLoadMore = false;
@@ -104,7 +104,7 @@ class _SendMoneyUserPickerState extends State<SendMoneyUserPicker> {
   void _onSearchChanged(String query) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 500), () async {
-      _filter = UserFilterDto.init();
+      _filter = UserFilterDto.init().copyWith(limit: 100);
       final q = query.trim();
       if (q.isNotEmpty) {
         _filter.fullName = q;

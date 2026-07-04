@@ -56,63 +56,76 @@ class _GroupMembersViewState extends State<GroupMembersView> {
       child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(5),
-          child: ValueListenableBuilder<SLoadingState<List<VGroupMember>>>(
-            valueListenable: controller,
-            builder: (_, value, __) {
-              return VAsyncWidgetsBuilder(
-                loadingState: value.loadingState,
-                onRefresh: controller.getData,
-                successWidget: () {
-                  return LoadMore(
-                    onLoadMore: controller.onLoadMore,
-                    isFinish: controller.isFinishLoadMore,
-                    textBuilder: (status) => "",
-                    child: ListView.separated(
-                      padding: const EdgeInsets.all(10),
-                      separatorBuilder: (context, index) => Divider(
-                        height: 10,
-                        thickness: 1,
-                        color: Colors.grey.withOpacity(.2),
-                      ),
-                      itemBuilder: (context, index) => SUserItem(
-                        baseUser: value.data[index].userData,
-                        subtitle: format(
-                          value.data[index].createdAtLocal,
-                          locale: Localizations.localeOf(context).languageCode,
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              _getTr(value.data[index].role),
-                              style: const TextStyle(
-                                fontSize: 15,
-                                color: Colors.red,
-                                fontWeight: FontWeight.w800,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+                child: CupertinoSearchTextField(
+                  controller: controller.txtController,
+                  onChanged: controller.onSearchChanged,
+                ),
+              ),
+              Expanded(
+                child: ValueListenableBuilder<SLoadingState<List<VGroupMember>>>(
+                  valueListenable: controller,
+                  builder: (_, value, __) {
+                    return VAsyncWidgetsBuilder(
+                      loadingState: value.loadingState,
+                      onRefresh: controller.getData,
+                      successWidget: () {
+                        return LoadMore(
+                          onLoadMore: controller.onLoadMore,
+                          isFinish: controller.isFinishLoadMore,
+                          textBuilder: (status) => "",
+                          child: ListView.separated(
+                            padding: const EdgeInsets.all(10),
+                            separatorBuilder: (context, index) => Divider(
+                              height: 10,
+                              thickness: 1,
+                              color: Colors.grey.withOpacity(.2),
+                            ),
+                            itemBuilder: (context, index) => SUserItem(
+                              baseUser: value.data[index].userData,
+                              subtitle: format(
+                                value.data[index].createdAtLocal,
+                                locale: Localizations.localeOf(context).languageCode,
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    _getTr(value.data[index].role),
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      color: Colors.red,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  Icon(
+                                    context.isRtl
+                                        ? CupertinoIcons.chevron_back
+                                        : CupertinoIcons.chevron_forward,
+                                  ),
+                                ],
+                              ),
+                              onTap: () => controller.onUserTab(
+                                context,
+                                value.data[index],
+                              ),
+                              onLongPress: () => controller.onUserTab(
+                                context,
+                                value.data[index],
                               ),
                             ),
-                            Icon(
-                              context.isRtl
-                                  ? CupertinoIcons.chevron_back
-                                  : CupertinoIcons.chevron_forward,
-                            ),
-                          ],
-                        ),
-                        onTap: () => controller.onUserTab(
-                          context,
-                          value.data[index],
-                        ),
-                        onLongPress: () => controller.onUserTab(
-                          context,
-                          value.data[index],
-                        ),
-                      ),
-                      itemCount: value.data.length,
-                    ),
-                  );
-                },
-              );
-            },
+                            itemCount: value.data.length,
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
         ),
       ),

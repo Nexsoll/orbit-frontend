@@ -17,6 +17,7 @@ import '../../widgets/chat_settings_navigation_bar.dart';
 import '../controllers/single_room_settings_controller.dart';
 import '../../encryption_verification/views/encryption_verification_view.dart';
 import '../../advanced_chat_privacy/views/advanced_chat_privacy_view.dart';
+import '../../../peer_profile/states/peer_profile_state.dart';
 import '../../../peer_profile/views/follow_users_page.dart';
 import '../../../peer_profile/views/user_music_gallery_view.dart';
 
@@ -93,6 +94,65 @@ class _SingleRoomSettingsViewState extends State<SingleRoomSettingsView> {
     );
   }
 
+  Future<void> _showPrivacyMessage(String message) {
+    return showCupertinoDialog(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('Private'),
+        content: Text(message),
+        actions: [
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openFollowList(PeerProfileModel user, {required bool isFollowersTab}) {
+    final hiddenByPrivacy = isFollowersTab
+        ? user.userPrivacy.hideFollowers
+        : user.userPrivacy.hideFollowing;
+    final canView = isFollowersTab
+        ? user.canViewFollowers
+        : user.canViewFollowing;
+    final listName = isFollowersTab ? 'followers' : 'following';
+
+    if (hiddenByPrivacy) {
+      _showPrivacyMessage('This user has hidden their $listName list.');
+      return;
+    }
+
+    if (!canView) {
+      _showPrivacyMessage('Follow first to view $listName.');
+      return;
+    }
+
+    context.toPage(
+      FollowUsersPage(
+        userId: user.searchUser.baseUser.id,
+        isFollowersTab: isFollowersTab,
+      ),
+    );
+  }
+
+  void _openGallery(PeerProfileModel user) {
+    if (!user.canViewGallery) {
+      _showPrivacyMessage('Follow first to view gallery.');
+      return;
+    }
+
+    context.toPage(
+      UserMusicGalleryView(
+        userId: user.searchUser.baseUser.id,
+        userName: user.searchUser.baseUser.fullName,
+        userImage: user.searchUser.baseUser.userImage,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return CupertinoPageScaffold(
@@ -147,7 +207,7 @@ class _SingleRoomSettingsViewState extends State<SingleRoomSettingsView> {
                             Text(
                               p.trim(),
                               style: context.cupertinoTextTheme.navTitleTextStyle.copyWith(
-                                color: CupertinoColors.black,
+                                color: CupertinoColors.label.resolveFrom(context),
                                 fontWeight: FontWeight.bold,
                               ),
                               textAlign: TextAlign.center,
@@ -177,8 +237,8 @@ class _SingleRoomSettingsViewState extends State<SingleRoomSettingsView> {
                               },
                               child: Text(
                                 value.data.user!.searchUser.phoneNumber!,
-                                style: const TextStyle(
-                                  color: CupertinoColors.black,
+                                style: TextStyle(
+                                  color: CupertinoColors.label.resolveFrom(context),
                                   fontSize: 16,
                                 ),
                               ),
@@ -203,14 +263,10 @@ class _SingleRoomSettingsViewState extends State<SingleRoomSettingsView> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               GestureDetector(
-                                onTap: () {
-                                  context.toPage(
-                                    FollowUsersPage(
-                                      userId: user.searchUser.baseUser.id,
-                                      isFollowersTab: true,
-                                    ),
-                                  );
-                                },
+                                onTap: () => _openFollowList(
+                                  user,
+                                  isFollowersTab: true,
+                                ),
                                 child: Text(
                                   '${user.followersCount} ${S.of(context).followersLabel}',
                                   style: const TextStyle(
@@ -221,14 +277,10 @@ class _SingleRoomSettingsViewState extends State<SingleRoomSettingsView> {
                               ),
                               const SizedBox(width: 12),
                               GestureDetector(
-                                onTap: () {
-                                  context.toPage(
-                                    FollowUsersPage(
-                                      userId: user.searchUser.baseUser.id,
-                                      isFollowersTab: false,
-                                    ),
-                                  );
-                                },
+                                onTap: () => _openFollowList(
+                                  user,
+                                  isFollowersTab: false,
+                                ),
                                 child: Text(
                                   '${user.followingCount} following',
                                   style: const TextStyle(
@@ -257,7 +309,6 @@ class _SingleRoomSettingsViewState extends State<SingleRoomSettingsView> {
                             ),
                           ),
                           const SizedBox(height: 15),
-                          // Music Gallery Button - TikTok Style
                           CupertinoListSection.insetGrouped(
                             backgroundColor: CupertinoTheme.of(context).scaffoldBackgroundColor,
                             hasLeading: false,
@@ -296,17 +347,7 @@ class _SingleRoomSettingsViewState extends State<SingleRoomSettingsView> {
                                     ),
                                   ],
                                 ),
-                                onTap: () {
-                                  final user = value.data.user;
-                                  if (user == null) return;
-                                  context.toPage(
-                                    UserMusicGalleryView(
-                                      userId: user.searchUser.baseUser.id,
-                                      userName: user.searchUser.baseUser.fullName,
-                                      userImage: user.searchUser.baseUser.userImage,
-                                    ),
-                                  );
-                                },
+                                onTap: () => _openGallery(user),
                               ),
                             ],
                           ),

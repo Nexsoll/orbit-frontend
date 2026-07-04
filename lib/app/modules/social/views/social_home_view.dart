@@ -2,8 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart'
-    show Colors, CircleAvatar;
+import 'package:flutter/material.dart' show Colors, CircleAvatar, Theme;
 import 'package:get_it/get_it.dart';
 import 'package:super_up/app/core/api_service/post/post_api_service.dart';
 import 'package:super_up/app/core/api_service/profile/profile_api_service.dart';
@@ -33,6 +32,9 @@ class _SocialHomeViewState extends State<SocialHomeView> {
   late final SocialStoryTabController _storyController;
   List<SSearchUser> _users = [];
   bool _isLoading = true;
+  String _searchQuery = '';
+  final _searchController = TextEditingController();
+  final _searchFocusNode = FocusNode();
 
   @override
   void initState() {
@@ -58,6 +60,8 @@ class _SocialHomeViewState extends State<SocialHomeView> {
 
   @override
   void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -96,7 +100,8 @@ class _SocialHomeViewState extends State<SocialHomeView> {
     }
   }
 
-  void _onStoryTap(UserStoryModel userStory, List<UserStoryModel> allRelevantStories) {
+  void _onStoryTap(
+      UserStoryModel userStory, List<UserStoryModel> allRelevantStories) {
     if (userStory.stories.isEmpty) return;
     final initialIndex = allRelevantStories.indexOf(userStory);
     context.toPage(StoryViewpage(
@@ -115,6 +120,7 @@ class _SocialHomeViewState extends State<SocialHomeView> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return CupertinoPageScaffold(
       child: CustomScrollView(
         slivers: [
@@ -123,30 +129,57 @@ class _SocialHomeViewState extends State<SocialHomeView> {
             largeTitle: const Text('Discover'),
           ),
           SliverToBoxAdapter(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const _SectionHeader(title: 'Trending Stories'),
-                _TrendingStoriesSection(
-                  storyController: _storyController,
-                  onStoryTap: _onStoryTap,
-                  onCreateStory: () => _storyController.toCreateStory(context),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: CupertinoSearchTextField(
+                controller: _searchController,
+                focusNode: _searchFocusNode,
+                placeholder: 'Search posts...',
+                style: TextStyle(
+                  color: isDark ? Colors.white : Colors.black,
                 ),
-                const SizedBox(height: 20),
-                const _SectionHeader(title: 'Suggested Friends'),
-                if (_isLoading)
-                  const _SuggestedFriendsSkeleton()
-                else
-                  _SuggestedFriendsSection(
-                    users: _users,
-                    onChatTap: _openChatWith,
-                  ),
-                const SizedBox(height: 20),
-                const _SectionHeader(title: 'Recommended Posts'),
-                const _PublicSnapFeedSection(),
-              ],
+                onChanged: (value) {
+                  setState(() => _searchQuery = value.trim());
+                },
+                onSuffixTap: () {
+                  _searchController.clear();
+                  _searchFocusNode.unfocus();
+                  setState(() => _searchQuery = '');
+                },
+              ),
             ),
           ),
+          if (_searchQuery.isNotEmpty)
+            SliverToBoxAdapter(
+              child: _PostSearchResultsSection(query: _searchQuery),
+            )
+          else
+            SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const _SectionHeader(title: 'Trending Stories'),
+                  _TrendingStoriesSection(
+                    storyController: _storyController,
+                    onStoryTap: _onStoryTap,
+                    onCreateStory: () =>
+                        _storyController.toCreateStory(context),
+                  ),
+                  const SizedBox(height: 20),
+                  const _SectionHeader(title: 'Suggested Friends'),
+                  if (_isLoading)
+                    const _SuggestedFriendsSkeleton()
+                  else
+                    _SuggestedFriendsSection(
+                      users: _users,
+                      onChatTap: _openChatWith,
+                    ),
+                  const SizedBox(height: 20),
+                  const _SectionHeader(title: 'Recommended Posts'),
+                  const _PublicSnapFeedSection(),
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -197,8 +230,8 @@ class _TrendingStoriesSection extends StatelessWidget {
         final unwatchedStories = <UserStoryModel>[];
         final watchedStories = <UserStoryModel>[];
         for (final userStory in allStories) {
-          final isWatched =
-              userStory.stories.isNotEmpty && userStory.stories.every((s) => s.viewedByMe);
+          final isWatched = userStory.stories.isNotEmpty &&
+              userStory.stories.every((s) => s.viewedByMe);
           if (isWatched) {
             watchedStories.add(userStory);
           } else {
@@ -239,34 +272,53 @@ class _TrendingStoriesSection extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Container(
-                    width: 50,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.3),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Center(
-                      child: Icon(
-                        CupertinoIcons.add,
-                        color: Colors.white,
-                        size: 28,
-                      ),
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  VCircleAvatar(
+                    radius: 25,
+                    vFileSource: VPlatformFile.fromUrl(
+                      networkUrl: AppAuth.myProfile.baseUser.userImage,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Add Story',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(1.5),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFB48648),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          CupertinoIcons.add,
+                          color: Colors.white,
+                          size: 11,
+                        ),
+                      ),
                     ),
                   ),
                 ],
               ),
-            ),
+              const SizedBox(height: 8),
+              const Text(
+                'Add Story',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
+            ],
           ),
+        ),
+      ),
         );
 
         // 2nd card: My stories
@@ -533,6 +585,158 @@ class _SuggestedFriendsSection extends StatelessWidget {
   }
 }
 
+class _PostSearchResultsSection extends StatefulWidget {
+  final String query;
+  const _PostSearchResultsSection({required this.query});
+
+  @override
+  State<_PostSearchResultsSection> createState() =>
+      _PostSearchResultsSectionState();
+}
+
+class _PostSearchResultsSectionState extends State<_PostSearchResultsSection> {
+  final _postApiService = GetIt.I.get<PostApiService>();
+  List<PostModel> _results = [];
+  bool _isLoading = true;
+  String _lastQuery = '';
+  Timer? _debounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _search();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PostSearchResultsSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.query != oldWidget.query) {
+      _search();
+    }
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _search() async {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () async {
+      final q = widget.query;
+      if (q.isEmpty) return;
+      if (q == _lastQuery) return;
+
+      setState(() => _isLoading = true);
+      try {
+        final posts = await _postApiService.searchPosts(query: q, limit: 30);
+        if (!mounted) return;
+        setState(() {
+          _results = posts;
+          _isLoading = false;
+          _lastQuery = q;
+        });
+      } catch (e) {
+        debugPrint('Search error: $e');
+        if (mounted) setState(() => _isLoading = false);
+      }
+    });
+  }
+
+  Future<void> _navigateByMention(BuildContext ctx, String mention) async {
+    final handle = mention.startsWith('@') ? mention.substring(1) : mention;
+    if (!GetIt.I.isRegistered<ProfileApiService>()) return;
+    final profileSvc = GetIt.I.get<ProfileApiService>();
+    try {
+      final users = await profileSvc.appUsers(
+        UserFilterDto.init().copyWith(fullName: handle, limit: 5, page: 1),
+      );
+      if (!mounted || users.isEmpty) return;
+      ctx.toPage(PeerProfileView(peerId: users.first.baseUser.id));
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Padding(
+        padding: EdgeInsets.all(32),
+        child: Center(child: CupertinoActivityIndicator()),
+      );
+    }
+    if (_results.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
+        child: Center(
+          child: Column(children: [
+            Icon(CupertinoIcons.search,
+                size: 48, color: Colors.grey.withValues(alpha: 0.4)),
+            const SizedBox(height: 12),
+            Text('No posts found for "${widget.query}"',
+                style: const TextStyle(color: Colors.grey),
+                textAlign: TextAlign.center),
+          ]),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: Text(
+            '${_results.length} result${_results.length == 1 ? '' : 's'}',
+            style: const TextStyle(color: Colors.grey, fontSize: 13),
+          ),
+        ),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 0),
+          itemCount: _results.length,
+          itemBuilder: (_, i) => Container(
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                )
+              ],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: PostFeedWidget(
+              key: ValueKey(_results[i].id),
+              post: _results[i],
+              onAuthorTap: () =>
+                  context.toPage(PeerProfileView(peerId: _results[i].userId)),
+              onHashtagTap: (tag) =>
+                  context.toPage(HashtagPostsScreen(hashtag: tag)),
+              onMentionTap: (mention) => _navigateByMention(context, mention),
+              onDeleted: (postId) {
+                setState(() {
+                  _results.removeWhere((p) => p.id == postId);
+                });
+              },
+              onUpdated: (updatedPost) {
+                setState(() {
+                  final idx =
+                      _results.indexWhere((p) => p.id == updatedPost.id);
+                  if (idx != -1) _results[idx] = updatedPost;
+                });
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _PublicSnapFeedSection extends StatefulWidget {
   const _PublicSnapFeedSection();
 
@@ -547,12 +751,39 @@ class _PublicSnapFeedSectionState extends State<_PublicSnapFeedSection> {
 
   void _onFeedRefreshRequested() {
     if (!mounted) return;
-    _load();
+    _load(forceRefresh: true);
+  }
+
+  void _onNewPostPublished() {
+    final post = PostApiService.newlyPublishedPost.value;
+    if (post == null ||
+        post.postType == PostType.reel ||
+        post.isReel == true ||
+        !mounted) {
+      return;
+    }
+    setState(() {
+      _posts = [
+        post,
+        ..._posts.where((p) => p.id != post.id),
+      ];
+      _isLoading = false;
+    });
+  }
+
+  List<PostModel> _withNewlyPublishedPost(List<PostModel> posts) {
+    final post = PostApiService.newlyPublishedPost.value;
+    if (post == null ||
+        post.postType == PostType.reel ||
+        post.isReel == true ||
+        posts.any((p) => p.id == post.id)) {
+      return posts;
+    }
+    return [post, ...posts];
   }
 
   Future<void> _navigateByMention(BuildContext ctx, String mention) async {
-    final handle =
-        mention.startsWith('@') ? mention.substring(1) : mention;
+    final handle = mention.startsWith('@') ? mention.substring(1) : mention;
     if (!GetIt.I.isRegistered<ProfileApiService>()) return;
     final profileSvc = GetIt.I.get<ProfileApiService>();
     try {
@@ -567,8 +798,9 @@ class _PublicSnapFeedSectionState extends State<_PublicSnapFeedSection> {
   @override
   void initState() {
     super.initState();
-    PostApiService.socialFeedRefreshToken
-        .addListener(_onFeedRefreshRequested);
+    PostApiService.socialFeedRefreshToken.addListener(_onFeedRefreshRequested);
+    PostApiService.newlyPublishedPost.addListener(_onNewPostPublished);
+    _onNewPostPublished();
     _load();
   }
 
@@ -576,29 +808,33 @@ class _PublicSnapFeedSectionState extends State<_PublicSnapFeedSection> {
   void dispose() {
     PostApiService.socialFeedRefreshToken
         .removeListener(_onFeedRefreshRequested);
+    PostApiService.newlyPublishedPost.removeListener(_onNewPostPublished);
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool forceRefresh = false}) async {
     try {
-      const pageSize = 20;
-      const targetCount = 10;
-      final filtered = <PostModel>[];
-      var page = 1;
-      var hasMore = true;
+      final posts = await _postApiService.getCachedAllPosts(
+        forceRefresh: forceRefresh,
+        onFreshData: (fresh) {
+          if (!mounted) return;
+          final filtered = _withNewlyPublishedPost(fresh
+              .where((p) => p.postType != PostType.reel && p.isReel != true)
+              .toList());
+          setState(() {
+            _posts = filtered;
+            _isLoading = false;
+          });
+        },
+      );
 
-      while (hasMore && filtered.length < targetCount && page <= 4) {
-        final posts = await _postApiService.getPosts(page: page, limit: pageSize);
-        filtered.addAll(
-          posts.where((p) => p.postType != PostType.reel && p.isReel != true),
-        );
-        hasMore = posts.length >= pageSize;
-        page++;
-      }
+      final filtered = _withNewlyPublishedPost(posts
+          .where((p) => p.postType != PostType.reel && p.isReel != true)
+          .toList());
 
       if (mounted) {
         setState(() {
-          _posts = filtered.take(targetCount).toList();
+          _posts = filtered;
           _isLoading = false;
         });
       }
@@ -621,8 +857,8 @@ class _PublicSnapFeedSectionState extends State<_PublicSnapFeedSection> {
         padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
         child: Center(
           child: Column(children: [
-            Icon(CupertinoIcons.photo, size: 48,
-                color: Colors.grey.withValues(alpha: 0.4)),
+            Icon(CupertinoIcons.photo,
+                size: 48, color: Colors.grey.withValues(alpha: 0.4)),
             const SizedBox(height: 12),
             const Text('No posts yet. Be the first to share!',
                 style: TextStyle(color: Colors.grey),
@@ -653,10 +889,10 @@ class _PublicSnapFeedSectionState extends State<_PublicSnapFeedSection> {
         child: PostFeedWidget(
           key: ValueKey(_posts[i].id),
           post: _posts[i],
-          onAuthorTap: () => context.toPage(
-              PeerProfileView(peerId: _posts[i].userId)),
-          onHashtagTap: (tag) => context.toPage(
-              HashtagPostsScreen(hashtag: tag)),
+          onAuthorTap: () =>
+              context.toPage(PeerProfileView(peerId: _posts[i].userId)),
+          onHashtagTap: (tag) =>
+              context.toPage(HashtagPostsScreen(hashtag: tag)),
           onMentionTap: (mention) => _navigateByMention(context, mention),
           onDeleted: (postId) {
             setState(() {
@@ -729,8 +965,9 @@ class _SocialStoryCardState extends State<_SocialStoryCard> {
   String? _deriveCloudinaryVideoThumbnailUrl(String rawUrl) {
     try {
       if (rawUrl.isEmpty) return null;
-      final fullUrl =
-          rawUrl.startsWith('http') ? rawUrl : '${SConstants.baseMediaUrl}$rawUrl';
+      final fullUrl = rawUrl.startsWith('http')
+          ? rawUrl
+          : '${SConstants.baseMediaUrl}$rawUrl';
       final u = Uri.parse(fullUrl);
       if (!u.host.contains('res.cloudinary.com')) return null;
       final path = u.path;
@@ -738,8 +975,9 @@ class _SocialStoryCardState extends State<_SocialStoryCard> {
       if (idx == -1) return null;
       final prefix =
           '${u.scheme}://${u.host}${path.substring(0, idx + '/upload/'.length)}';
-      final tail =
-          path.substring(idx + '/upload/'.length).replaceFirst(RegExp(r'^/+'), '');
+      final tail = path
+          .substring(idx + '/upload/'.length)
+          .replaceFirst(RegExp(r'^/+'), '');
       final jpgTail = tail.replaceAll(RegExp(r'\.[^./]+$'), '.jpg');
       const transform = 'so_1,w_640,h_360,c_fill,f_jpg';
       return '$prefix$transform/$jpgTail';
@@ -883,15 +1121,18 @@ class _SocialStoryCardState extends State<_SocialStoryCard> {
     final isVideo = story.storyType == StoryType.video;
     final isPostShare = (att['postId'] ?? '').toString().isNotEmpty;
     final postType = (att['postType'] ?? '').toString();
-    final postCaption = (att['caption'] ?? story.caption ?? story.content).toString();
+    final postCaption =
+        (att['caption'] ?? story.caption ?? story.content).toString();
     final isPostVideo = postType == 'video' || postType == 'reel';
     final rawPostMedia = (att['mediaUrl'] ?? att['url'] ?? '').toString();
     final derivedVideoThumb = isPostVideo
-      ? (_deriveCloudinaryVideoThumbnailUrl(rawPostMedia) ?? '')
-      : '';
+        ? (_deriveCloudinaryVideoThumbnailUrl(rawPostMedia) ?? '')
+        : '';
     final rawPostThumb = isPostVideo
-      ? (att['thumbnailUrl'] ?? att['thumbUrl'] ?? derivedVideoThumb ?? '').toString()
-      : (att['thumbnailUrl'] ?? att['mediaUrl'] ?? att['thumbUrl'] ?? '').toString();
+        ? (att['thumbnailUrl'] ?? att['thumbUrl'] ?? derivedVideoThumb ?? '')
+            .toString()
+        : (att['thumbnailUrl'] ?? att['mediaUrl'] ?? att['thumbUrl'] ?? '')
+            .toString();
     final postThumbUrl = _resolvedPostShareThumb ??
         (rawPostThumb.isEmpty
             ? null
@@ -908,7 +1149,8 @@ class _SocialStoryCardState extends State<_SocialStoryCard> {
         ? (_videoThumbnail ?? (story.att?['thumbUrl'] as String?))
         : (story.att?['url'] as String?);
     final selectedThumbUrl = isPostShare ? postThumbUrl : thumbUrl;
-    final hasSelectedThumb = selectedThumbUrl != null && selectedThumbUrl.isNotEmpty;
+    final hasSelectedThumb =
+        selectedThumbUrl != null && selectedThumbUrl.isNotEmpty;
 
     Widget cardContent = GestureDetector(
       onTap: widget.onTap,
@@ -988,7 +1230,8 @@ class _SocialStoryCardState extends State<_SocialStoryCard> {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 8, vertical: 6),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFB48648).withOpacity(0.15),
+                                  color:
+                                      const Color(0xFFB48648).withOpacity(0.15),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Row(

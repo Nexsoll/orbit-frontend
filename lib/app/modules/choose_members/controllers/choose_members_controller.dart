@@ -38,6 +38,7 @@ class ChooseMembersController
   @override
   void onInit() {
     getData();
+    _loadInitialSelectedUsers();
   }
 
   Future<void> getData() async {
@@ -164,6 +165,38 @@ class ChooseMembersController
     }
 
     update();
+  }
+
+  Future<void> _loadInitialSelectedUsers() async {
+    if (initialSelectedUserIds == null || initialSelectedUserIds!.isEmpty) {
+      return;
+    }
+    for (final id in initialSelectedUserIds!) {
+      if (selectedUsers.any((e) => e.searchUser.baseUser.id == id)) {
+        continue;
+      }
+      try {
+        final profile = await profileApiService.peerProfile(id);
+        final selectableUser = SSelectableUser(
+          searchUser: profile.searchUser,
+          isSelected: true,
+        );
+        if (!selectedUsers.any((e) => e.searchUser.baseUser.id == id)) {
+          selectedUsers.add(selectableUser);
+          
+          final dataIndex = data.indexWhere((e) => e.searchUser.baseUser.id == id);
+          if (dataIndex != -1) {
+            data[dataIndex].isSelected = true;
+          }
+          
+          update();
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print("Error fetching profile for initial selected user ID $id: $e");
+        }
+      }
+    }
   }
 
   @override

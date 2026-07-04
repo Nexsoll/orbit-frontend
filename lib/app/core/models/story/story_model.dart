@@ -143,11 +143,13 @@ class UserStoryModel {
   final SBaseUser userData;
 
   final List<StoryModel> stories;
+  final bool allowStoryScreenshot;
 
 //<editor-fold desc="Data Methods">
   const UserStoryModel({
     required this.userData,
     required this.stories,
+    this.allowStoryScreenshot = false,
   });
 
   @override
@@ -169,14 +171,23 @@ class UserStoryModel {
     return {
       'userData': userData.toMap(),
       'stories': stories.map((e) => e.toMap()).toList(),
+      'allowStoryScreenshot': allowStoryScreenshot,
     };
   }
 
   factory UserStoryModel.fromMap(Map<String, dynamic> map) {
+    final userDataMap = (map['userData'] as Map).map(
+      (key, value) => MapEntry(key.toString(), value),
+    );
+    final userPrivacy = userDataMap['userPrivacy'];
+    final allowStoryScreenshot = map['allowStoryScreenshot'] == true ||
+        (userPrivacy is Map && userPrivacy['allowStoryScreenshot'] == true);
+
     return UserStoryModel(
-      userData: SBaseUser.fromMap(map['userData']),
+      userData: SBaseUser.fromMap(userDataMap),
       stories:
           (map['stories'] as List).map((e) => StoryModel.fromMap(e)).toList(),
+      allowStoryScreenshot: allowStoryScreenshot,
     );
   }
 

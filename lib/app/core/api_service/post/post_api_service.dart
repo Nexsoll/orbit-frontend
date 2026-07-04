@@ -3,22 +3,35 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:super_up/app/core/api_service/post/post_api.dart';
+import 'package:super_up/app/core/api_service/story/story_api.dart';
 import 'package:super_up/app/core/models/post/post_model.dart';
 import 'package:super_up_core/super_up_core.dart';
 import 'package:v_platform/v_platform.dart';
 
+import '../../services/social_feed_cache_service.dart';
 import '../exceptions.dart';
 import '../interceptors.dart';
 
 class PostApiService {
   static PostApi? _postApi;
-  static final ValueNotifier<int> socialFeedRefreshToken = ValueNotifier<int>(0);
+  static final ValueNotifier<int> socialFeedRefreshToken =
+      ValueNotifier<int>(0);
+  static final ValueNotifier<PostModel?> newlyPublishedPost =
+      ValueNotifier<PostModel?>(null);
   final PostApi? _postApiInstance;
 
   PostApiService._(this._postApiInstance);
 
   static void notifySocialFeedRefresh() {
     socialFeedRefreshToken.value = socialFeedRefreshToken.value + 1;
+  }
+
+  static Future<void> invalidateSocialFeedCache(
+      {bool includeReels = false}) async {
+    await SocialFeedCacheService.instance.clearPosts();
+    if (includeReels) {
+      await SocialFeedCacheService.instance.clearReels();
+    }
   }
 
   static PostApiService init({
@@ -33,8 +46,7 @@ class PostApiService {
   }
 
   static Map<String, String> _authHeaders() {
-    final token =
-        VAppPref.getHashedString(key: SStorageKeys.vAccessToken.name);
+    final token = VAppPref.getHashedString(key: SStorageKeys.vAccessToken.name);
     return {
       'Accept': 'application/json',
       if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
@@ -46,12 +58,14 @@ class PostApiService {
     int limit = 20,
     PostType? postType,
     String? hashtag,
+    String? search,
   }) async {
     final res = await _postApiInstance!.getPosts(
       page: page,
       limit: limit,
       postType: postType?.name,
       hashtag: hashtag,
+      search: search,
     );
     throwIfNotSuccess(res);
     final data = extractDataFromResponse(res);
@@ -59,12 +73,247 @@ class PostApiService {
     return docs.map((e) => PostModel.fromMap(e)).toList();
   }
 
+  Future<List<PostModel>> getAllPosts({
+    int pageSize = 100,
+    PostType? postType,
+    String? hashtag,
+    String? search,
+  }) async {
+    final safePageSize = pageSize < 1 ? 100 : pageSize;
+    final all = <PostModel>[];
+    var page = 1;
+
+    while (true) {
+      final posts = await getPosts(
+        page: page,
+        limit: safePageSize,
+        postType: postType,
+        hashtag: hashtag,
+        search: search,
+      );
+      all.addAll(posts);
+
+      if (posts.length < safePageSize) break;
+      page++;
+    }
+
+    return all;
+  }
+
   Future<List<PostModel>> getReels({int page = 1, int limit = 20}) async {
-    final res = await _postApiInstance!.getReels(page: page, limit: limit);
-    throwIfNotSuccess(res);
-    final data = extractDataFromResponse(res);
-    final docs = data['docs'] as List;
+    final safePage = page < 1 ? 1 : page;
+    final safeLimit = limit < 1 ? 20 : (limit > 30 ? 30 : limit);
+    final headers = _authHeaders();
+
+    String? cursor;
+    Map<String, dynamic> payload = const {'data': [], 'nextCursor': null};
+
+    for (int i = 1; i <= safePage; i++) {
+      final query = <String, dynamic>{
+        'limit': safeLimit.toString(),
+        if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+      };
+      final uri = StoryApi.storyReelsServiceBaseUrl.replace(
+        path: '${StoryApi.storyReelsServiceBaseUrl.path}/reels/feed',
+        queryParameters: query,
+      );
+      final res = await http.get(uri, headers: headers);
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        throw SuperHttpBadRequest(exception: 'Failed to load reels feed');
+      }
+
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      payload = body;
+
+      if (i < safePage) {
+        cursor = (body['nextCursor'] as String?)?.trim();
+        if (cursor == null || cursor.isEmpty) break;
+      }
+    }
+
+    final rawList =
+        (payload['data'] is List) ? payload['data'] as List : const [];
+    final docs = rawList.map((reel) {
+      final m = (reel as Map<String, dynamic>);
+      final uploader = (m['uploaderData'] as Map?)?.cast<String, dynamic>() ??
+          const <String, dynamic>{};
+      return <String, dynamic>{
+        '_id': m['_id'] ?? '',
+        'userId': {
+          '_id': uploader['_id'] ?? m['uploaderId'] ?? '',
+          'fullName': uploader['fullName'] ?? '',
+          'userImage': uploader['userImage'] ?? '',
+          'username': uploader['username'] ?? '',
+          'isFollowing': uploader['isFollowing'] == true,
+        },
+        'postType': 'reel',
+        'caption': m['caption'] ?? '',
+        'mentionedUsers': const <String>[],
+        'hashtags': (m['hashtags'] as List?) ?? const <dynamic>[],
+        'media': {
+          'url': m['mediaUrl'] ?? '',
+          'thumbnail': m['coverUrl'] ?? '',
+          'mimeType': 'video/mp4',
+        },
+        'mediaUrls': m['mediaUrl'] == null
+            ? const <String>[]
+            : <String>[m['mediaUrl'].toString()],
+        'location': null,
+        'likesCount': m['likesCount'] ?? 0,
+        'viewsCount': m['viewsCount'] ?? 0,
+        'commentsCount': m['commentsCount'] ?? 0,
+        'sharesCount': m['sharesCount'] ?? 0,
+        'likedBy': m['hasLiked'] == true ? <String>['me'] : const <String>[],
+        'currentUserId': 'me',
+        'isReel': true,
+        'createdAt': m['createdAt'] ?? '',
+      };
+    }).toList();
+
     return docs.map((e) => PostModel.fromMap(e)).toList();
+  }
+
+  /// Returns cached posts instantly (if available), then fetches fresh data
+  /// from the API and updates the cache silently.
+  /// The [onFreshData] callback is called when fresh API data arrives.
+  Future<List<PostModel>> getCachedPosts({
+    int page = 1,
+    int limit = 20,
+    PostType? postType,
+    String? hashtag,
+    ValueChanged<List<PostModel>>? onFreshData,
+  }) async {
+    final cache = SocialFeedCacheService.instance;
+    final cached = cache.getPosts();
+
+    // If we have cached data, return it immediately
+    if (cached.isNotEmpty) {
+      // Kick off background refresh (don't await)
+      _refreshPostsCache(
+          page: page,
+          limit: limit,
+          postType: postType,
+          hashtag: hashtag,
+          onFreshData: onFreshData);
+      return cached;
+    }
+
+    // No cache — fetch from API directly
+    final fresh = await getPosts(
+        page: page, limit: limit, postType: postType, hashtag: hashtag);
+    await cache.savePosts(fresh);
+    return fresh;
+  }
+
+  Future<void> _refreshPostsCache({
+    int page = 1,
+    int limit = 20,
+    PostType? postType,
+    String? hashtag,
+    ValueChanged<List<PostModel>>? onFreshData,
+  }) async {
+    try {
+      final fresh = await getPosts(
+          page: page, limit: limit, postType: postType, hashtag: hashtag);
+      await SocialFeedCacheService.instance.savePosts(fresh);
+      onFreshData?.call(fresh);
+    } catch (e) {
+      debugPrint('Background posts refresh failed: $e');
+    }
+  }
+
+  Future<List<PostModel>> getCachedAllPosts({
+    int pageSize = 100,
+    PostType? postType,
+    String? hashtag,
+    bool forceRefresh = false,
+    ValueChanged<List<PostModel>>? onFreshData,
+  }) async {
+    final cache = SocialFeedCacheService.instance;
+    final cached = cache.getPosts();
+
+    if (!forceRefresh && cached.isNotEmpty) {
+      _refreshAllPostsCache(
+        pageSize: pageSize,
+        postType: postType,
+        hashtag: hashtag,
+        onFreshData: onFreshData,
+      );
+      return cached;
+    }
+
+    final fresh = await getAllPosts(
+      pageSize: pageSize,
+      postType: postType,
+      hashtag: hashtag,
+    );
+    await cache.savePosts(fresh);
+    return fresh;
+  }
+
+  Future<void> _refreshAllPostsCache({
+    int pageSize = 100,
+    PostType? postType,
+    String? hashtag,
+    ValueChanged<List<PostModel>>? onFreshData,
+  }) async {
+    try {
+      final fresh = await getAllPosts(
+        pageSize: pageSize,
+        postType: postType,
+        hashtag: hashtag,
+      );
+      await SocialFeedCacheService.instance.savePosts(fresh);
+      onFreshData?.call(fresh);
+    } catch (e) {
+      debugPrint('Background all posts refresh failed: $e');
+    }
+  }
+
+  /// Returns cached reels instantly (if available), then fetches fresh data
+  /// from the API and updates the cache silently.
+  Future<List<PostModel>> getCachedReels({
+    int page = 1,
+    int limit = 20,
+    ValueChanged<List<PostModel>>? onFreshData,
+  }) async {
+    final cache = SocialFeedCacheService.instance;
+    final cached = cache.getReels();
+
+    if (cached.isNotEmpty && page == 1) {
+      // Kick off background refresh (don't await)
+      _refreshReelsCache(page: page, limit: limit, onFreshData: onFreshData);
+      return cached;
+    }
+
+    // No cache or paginating — fetch from API directly
+    final fresh = await getReels(page: page, limit: limit);
+    if (page == 1) {
+      await cache.saveReels(fresh);
+    }
+    return fresh;
+  }
+
+  Future<void> _refreshReelsCache({
+    int page = 1,
+    int limit = 20,
+    ValueChanged<List<PostModel>>? onFreshData,
+  }) async {
+    try {
+      final fresh = await getReels(page: page, limit: limit);
+      await SocialFeedCacheService.instance.saveReels(fresh);
+      onFreshData?.call(fresh);
+    } catch (e) {
+      debugPrint('Background reels refresh failed: $e');
+    }
+  }
+
+  Future<List<PostModel>> searchPosts({
+    required String query,
+    int page = 1,
+    int limit = 20,
+  }) async {
+    return getPosts(page: page, limit: limit, search: query);
   }
 
   Future<List<PostModel>> getMyPosts({int page = 1, int limit = 20}) async {
@@ -83,6 +332,8 @@ class PostApiService {
     debugPrint('createTextPost: $body');
     final res = await _postApiInstance!.createPost(body);
     throwIfNotSuccess(res);
+    final post = await _postFromCreateResponse(extractDataFromResponse(res));
+    await _postMutationSucceeded(createdPost: post);
   }
 
   /// Upload 1-10 photos for an image post via raw multipart HTTP.
@@ -91,11 +342,13 @@ class PostApiService {
     String? caption,
   }) async {
     debugPrint('createMultiPhotoPost: ${files.length} files');
-    await _multipartUpload(
+    final data = await _multipartUpload(
       postType: 'image',
       caption: caption,
       files: files,
     );
+    final post = await _postFromCreateResponse(data);
+    await _postMutationSucceeded(createdPost: post);
   }
 
   /// Upload a single video post.
@@ -104,11 +357,13 @@ class PostApiService {
     String? caption,
   }) async {
     debugPrint('createVideoPost');
-    await _multipartUpload(
+    final data = await _multipartUpload(
       postType: 'video',
       caption: caption,
       files: [file],
     );
+    final post = await _postFromCreateResponse(data);
+    await _postMutationSucceeded(createdPost: post);
   }
 
   /// Upload a single reel video post.
@@ -117,12 +372,14 @@ class PostApiService {
     String? caption,
   }) async {
     debugPrint('createReelPost');
-    await _multipartUpload(
+    final data = await _multipartUpload(
       postType: 'reel',
       caption: caption,
       files: [file],
       isReel: true,
     );
+    final post = await _postFromCreateResponse(data);
+    await _postMutationSucceeded(includeReels: true, createdPost: post);
   }
 
   /// Create a check-in / location post (no media upload needed).
@@ -138,6 +395,8 @@ class PostApiService {
     debugPrint('createLocationPost: $body');
     final res = await _postApiInstance!.createPost(body);
     throwIfNotSuccess(res);
+    final post = await _postFromCreateResponse(extractDataFromResponse(res));
+    await _postMutationSucceeded(createdPost: post);
   }
 
   Future<PostModel> getPostById(String postId) async {
@@ -259,17 +518,49 @@ class PostApiService {
     Map<String, dynamic>? location,
     bool isReel = false,
   }) async {
-    await _multipartUpload(
+    final data = await _multipartUpload(
       postType: postType.name,
       caption: caption,
       files: [file],
       isReel: isReel,
       locationJson: location != null ? jsonEncode(location) : null,
     );
+    final post = await _postFromCreateResponse(data);
+    await _postMutationSucceeded(
+      includeReels: isReel || postType == PostType.reel,
+      createdPost: post,
+    );
+  }
+
+  Future<PostModel?> _postFromCreateResponse(dynamic data) async {
+    if (data is! Map) return null;
+    final map = Map<String, dynamic>.from(data);
+    final id = (map['_id'] ?? map['id'] ?? '').toString();
+    if (id.isEmpty) return null;
+    try {
+      return await getPostById(id);
+    } catch (_) {
+      return PostModel.fromMap(map);
+    }
+  }
+
+  Future<void> _postMutationSucceeded({
+    bool includeReels = false,
+    PostModel? createdPost,
+  }) async {
+    await invalidateSocialFeedCache(includeReels: includeReels);
+    if (createdPost != null) {
+      newlyPublishedPost.value = createdPost;
+    }
+    notifySocialFeedRefresh();
+    Future<void>.delayed(const Duration(milliseconds: 900), () async {
+      await invalidateSocialFeedCache(includeReels: includeReels);
+      notifySocialFeedRefresh();
+    });
   }
 
   // ─── raw multipart upload ────────────────────────────────────────────────────
-  Future<void> _multipartUpload({
+  Future<Map<String, dynamic>?> _multipartUpload({
     required String postType,
     String? caption,
     List<VPlatformFile> files = const [],
@@ -277,13 +568,15 @@ class PostApiService {
     String? locationJson,
   }) async {
     final uri = SConstants.sApiBaseUrl.replace(
-      path: SConstants.sApiBaseUrl.path + '/posts/upload',
+      path: '${SConstants.sApiBaseUrl.path}/posts/upload',
     );
     final request = http.MultipartRequest('POST', uri);
     request.headers.addAll(_authHeaders());
 
     request.fields['postType'] = postType;
-    if (caption != null && caption.isNotEmpty) request.fields['caption'] = caption;
+    if (caption != null && caption.isNotEmpty) {
+      request.fields['caption'] = caption;
+    }
     if (isReel) request.fields['isReel'] = 'true';
     if (locationJson != null) request.fields['location'] = locationJson;
 
@@ -312,11 +605,20 @@ class PostApiService {
       try {
         err = jsonDecode(body.body) as Map<String, dynamic>;
       } catch (_) {}
-      final msg = (err?['data'] ?? err?['message'] ?? 'Upload failed').toString();
+      final msg =
+          (err?['data'] ?? err?['message'] ?? 'Upload failed').toString();
       if (body.statusCode == 401) {
         unAuthStream450Error.add(true);
       }
       throw SuperHttpBadRequest(exception: msg);
     }
+
+    try {
+      final decoded = jsonDecode(body.body);
+      final data = decoded is Map ? decoded['data'] : null;
+      if (data is Map<String, dynamic>) return data;
+      if (data is Map) return Map<String, dynamic>.from(data);
+    } catch (_) {}
+    return null;
   }
 }

@@ -62,6 +62,7 @@ class _DriverDashboardViewState extends State<DriverDashboardView> {
     try {
       final socket = VChatController.I.nativeApi.remote.socketIo.socket;
       socket.off('ride_request');
+      socket.off('ride_request_removed');
       socket.on('ride_request', (data) {
         try {
           Map<String, dynamic>? map;
@@ -96,6 +97,23 @@ class _DriverDashboardViewState extends State<DriverDashboardView> {
           }
         } catch (_) {}
       });
+      socket.on('ride_request_removed', (data) {
+        try {
+          Map<String, dynamic>? map;
+          if (data is Map) {
+            map = Map<String, dynamic>.from(data);
+          } else if (data is String) {
+            map = Map<String, dynamic>.from(jsonDecode(data) as Map);
+          }
+          if (map != null) {
+            final reqId = (map['requestId'] ?? '').toString();
+            if (reqId.isNotEmpty) {
+              final myId = AppAuth.myProfile.baseUser.id;
+              DriverRequestsService.instance.removeRequest(driverId: myId, requestId: reqId);
+            }
+          }
+        } catch (_) {}
+      });
       _socketBound = true;
     } catch (_) {}
   }
@@ -105,6 +123,7 @@ class _DriverDashboardViewState extends State<DriverDashboardView> {
     try {
       final socket = VChatController.I.nativeApi.remote.socketIo.socket;
       socket.off('ride_request');
+      socket.off('ride_request_removed');
     } catch (_) {}
     super.dispose();
   }
@@ -544,6 +563,7 @@ class _RequestsList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<RideRequestModel>>(
+      initialData: DriverRequestsService.instance.getDriverRequests(driverId),
       stream: DriverRequestsService.instance.watchDriverRequests(driverId),
       builder: (context, snap) {
         final items = snap.data ?? const [];

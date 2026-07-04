@@ -1,5 +1,6 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
+import 'package:super_up_core/super_up_core.dart';
 import 'dart:convert';
 
 // CRITICAL: Top-level function with pragma for background isolate
@@ -10,8 +11,9 @@ void notificationTapBackground(NotificationResponse notificationResponse) {
       '${notificationResponse.actionId} with'
       ' payload: ${notificationResponse.payload}');
   if (notificationResponse.input?.isNotEmpty ?? false) {
-    print('notification action tapped with input: ${notificationResponse.input}');
-    
+    print(
+        'notification action tapped with input: ${notificationResponse.input}');
+
     // Send the reply
     _sendReply(notificationResponse);
   }
@@ -21,21 +23,22 @@ void _sendReply(NotificationResponse response) async {
   try {
     final text = response.input?.trim() ?? '';
     if (text.isEmpty) return;
-    
+
     print('📤 Sending reply: "$text"');
-    
+
     final payloadData = jsonDecode(response.payload ?? '{}');
     final roomId = payloadData['roomId'] ?? '';
     final token = payloadData['token'] ?? '';
-    final baseUrl = payloadData['baseUrl'] ?? 'https://api.orbit.ke/api/v1';
-    
+    final baseUrl = payloadData['baseUrl'] ?? SConstants.sApiBaseUrl.toString();
+
     if (roomId.isEmpty || token.isEmpty) {
       print('Missing roomId or token');
       return;
     }
-    
-    final uri = Uri.parse("$baseUrl/channel/$roomId/message/notification-reply");
-    
+
+    final uri =
+        Uri.parse("$baseUrl/channel/$roomId/message/notification-reply");
+
     final res = await http.post(
       uri,
       headers: {
@@ -51,7 +54,7 @@ void _sendReply(NotificationResponse response) async {
         'platform': 'notification',
       }),
     );
-    
+
     print('✅ Response: ${res.statusCode} - ${res.body}');
   } catch (e) {
     print('❌ Error sending reply: $e');

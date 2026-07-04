@@ -1,9 +1,8 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:s_translation/generated/l10n.dart';
 import 'package:super_up/app/modules/music/views/music_audio_player_page.dart';
+import 'package:super_up/app/modules/music/views/music_video_player_page.dart';
 import 'package:super_up_core/super_up_core.dart';
-import 'package:v_platform/v_platform.dart';
 
 class MusicShareMessageWidget extends StatelessWidget {
   final bool isMeSender;
@@ -35,6 +34,13 @@ class MusicShareMessageWidget extends StatelessWidget {
 
   String get _uploaderImage =>
       (data['uploaderImage'] ?? data['uploaderImg'] ?? '').toString();
+
+  String get _musicId => (data['musicId'] ?? data['_id'] ?? data['id'] ?? '')
+      .toString();
+
+  Map<String, dynamic>? get _initialSubtitles => data['subtitles'] is Map
+      ? Map<String, dynamic>.from(data['subtitles'])
+      : null;
 
   bool get _isArticle {
     if (data['isArticle'] == true) return true;
@@ -80,6 +86,8 @@ class MusicShareMessageWidget extends StatelessWidget {
           builder: (_) => MusicAudioPlayerPage(
             title: _title,
             url: url,
+            musicId: _musicId.isEmpty ? null : _musicId,
+            initialSubtitles: _initialSubtitles,
             autoPlay: true,
           ),
         ),
@@ -89,11 +97,12 @@ class MusicShareMessageWidget extends StatelessWidget {
 
     await Navigator.of(context).push(
       CupertinoPageRoute(
-        builder: (_) => VVideoPlayer(
-          showDownload: true,
-          platformFileSource: VPlatformFile.fromUrl(networkUrl: url),
-          downloadingLabel: S.of(context).downloading,
-          successfullyDownloadedInLabel: S.of(context).successfullyDownloadedIn,
+        builder: (_) => MusicVideoPlayerPage(
+          title: _title,
+          url: url,
+          musicId: _musicId.isEmpty ? null : _musicId,
+          initialSubtitles: _initialSubtitles,
+          autoPlay: true,
         ),
       ),
     );

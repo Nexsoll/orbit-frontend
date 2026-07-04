@@ -19,6 +19,7 @@ import 'package:http/http.dart' as http;
 import 'package:super_up/app/modules/driver/views/driver_dashboard_view.dart';
 import 'package:super_up/app/core/services/ride_mode_service.dart';
 import 'package:super_up/app/modules/ride/views/ride_history_view.dart';
+import 'package:super_up/app/modules/ride/views/ride_tracking_view.dart';
 import 'package:super_up/app/modules/ride/views/scheduled_rides_view.dart';
 import 'package:super_up/app/modules/ride/views/favorite_locations_view.dart';
 import 'package:v_chat_sdk_core/v_chat_sdk_core.dart';
@@ -1015,9 +1016,9 @@ class _OrbitRideViewState extends State<OrbitRideView> {
       }
     } catch (e) {
       if (!mounted) return;
-      VAppAlert.showSuccessSnackBar(
+      VAppAlert.showErrorSnackBar(
         context: context,
-        message: 'Request sent',
+        message: 'Could not send ride request. Please try again.',
       );
     }
   }
@@ -1028,14 +1029,50 @@ class _OrbitRideViewState extends State<OrbitRideView> {
       final socket = VChatController.I.nativeApi.remote.socketIo.socket;
       socket.off('ride_assigned');
       socket.on('ride_assigned', (data) {
-        // Driver accepted - hide finding overlay
-        if (mounted) {
-          setState(() {
-            _isFindingDriver = false;
-            _currentRequestId = null;
-          });
-        }
-        _unbindFindingDriverSocket();
+        // Driver accepted - hide finding overlay and navigate to tracking view
+        try {
+          Map<String, dynamic>? map;
+          if (data is Map) {
+            map = Map<String, dynamic>.from(data);
+          } else if (data is String) {
+            map = Map<String, dynamic>.from(jsonDecode(data) as Map);
+          }
+          if (map != null && mounted) {
+            setState(() {
+              _isFindingDriver = false;
+              _currentRequestId = null;
+            });
+            _unbindFindingDriverSocket();
+
+            // Navigate to passenger ride tracking view
+            Navigator.of(context).push(
+              CupertinoPageRoute(
+                builder: (_) => RideTrackingView(
+                  role: RideTrackingRole.passenger,
+                  rideId: (map!['rideId'] ?? '').toString(),
+                  passengerId: AppAuth.myProfile.baseUser.id,
+                  driverId: (map['driverId'] ?? '').toString(),
+                  pickupAddress: (map['pickupAddress'] ?? '').toString(),
+                  dropoffAddress: (map['dropoffAddress'] ?? '').toString(),
+                  pickupLat: (map['pickupLat'] as num).toDouble(),
+                  pickupLng: (map['pickupLng'] as num).toDouble(),
+                  dropoffLat: (map['dropoffLat'] as num).toDouble(),
+                  dropoffLng: (map['dropoffLng'] as num).toDouble(),
+                  fareKes: (map['fareKes'] as num).toDouble(),
+                  rideType: map['rideType'] as String?,
+                  passengersCount: ((map['passengersCount'] as num?) ?? (map['passengers_count'] as num?))?.toInt() ?? 1,
+                  driverName: (map['driverName'] ?? '').toString(),
+                  driverPhotoUrl: map['driverPhotoUrl'] as String?,
+                  vehicleModel: map['vehicleModel'] as String?,
+                  vehiclePlate: map['vehiclePlate'] as String?,
+                  vehicleType: map['vehicleType'] as String?,
+                  acceptedByDriver: true,
+                  preTrip: map['preTrip'] == true,
+                ),
+              ),
+            );
+          }
+        } catch (_) {}
       });
       _findingDriverSocketBound = true;
     } catch (_) {}

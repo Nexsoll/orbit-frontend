@@ -123,6 +123,20 @@ final class _$AuthApi extends AuthApi {
   }
 
   @override
+  Future<Response<dynamic>> verifyOtpResetPasswordOnly(
+      Map<String, dynamic> body) {
+    final Uri $url = Uri.parse('auth/verify-otp-reset-password-only');
+    final $body = body;
+    final Request $request = Request(
+      'POST',
+      $url,
+      client.baseUrl,
+      body: $body,
+    );
+    return client.send<dynamic, dynamic>($request);
+  }
+
+  @override
   Future<Response<dynamic>> register(
     List<PartValue<dynamic>> body,
     MultipartFile? file,

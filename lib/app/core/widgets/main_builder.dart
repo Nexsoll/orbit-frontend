@@ -10,6 +10,7 @@ import 'package:super_up_core/super_up_core.dart';
 import 'package:v_chat_message_page/v_chat_message_page.dart';
 import '../services/app_lock_service.dart';
 import '../../modules/lock/views/app_locked_page.dart';
+import '../../modules/music/widgets/music_mini_player.dart';
 import 'package:super_up/main.dart';
 
 class MainBuilder extends StatefulWidget {
@@ -96,6 +97,9 @@ class _MainBuilderState extends State<MainBuilder> with WidgetsBindingObserver {
             children: [
               widget.child!,
               const VActiveCallOverlay(),
+              MusicMiniPlayerOverlay(
+                navigatorProvider: () => navigatorKey.currentState,
+              ),
             ],
           ),
         ),
@@ -105,6 +109,9 @@ class _MainBuilderState extends State<MainBuilder> with WidgetsBindingObserver {
       children: [
         widget.child!,
         const VActiveCallOverlay(),
+        MusicMiniPlayerOverlay(
+          navigatorProvider: () => navigatorKey.currentState,
+        ),
       ],
     );
   }

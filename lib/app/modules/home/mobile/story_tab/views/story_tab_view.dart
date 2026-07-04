@@ -362,20 +362,39 @@ class _MainTrendingStoriesSection extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.3),
-                  shape: BoxShape.circle,
-                ),
-                child: const Center(
-                  child: Icon(
-                    CupertinoIcons.add,
-                    color: Colors.white,
-                    size: 28,
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  VCircleAvatar(
+                    radius: 25,
+                    vFileSource: VPlatformFile.fromUrl(
+                      networkUrl: AppAuth.myProfile.baseUser.userImage,
+                    ),
                   ),
-                ),
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(1.5),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFB48648),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          CupertinoIcons.add,
+                          color: Colors.white,
+                          size: 11,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               const Text(

@@ -12,10 +12,12 @@ import 'package:v_platform/v_platform.dart';
 
 import '../../../core/api_service/story/story_api_service.dart';
 import '../../../core/models/story/story_model.dart';
+import '../../../core/utils/enums.dart';
 import '../../../core/utils/permission_manager.dart';
 import '../../story/media_story/create_media_story.dart';
 import '../../story/text_story/create_text_story.dart';
 import '../../story/voice_story/create_voice_story.dart';
+import '../../story/story_subscription/story_subscription_helper.dart';
 
 class SocialStoryTabState {
   List<UserStoryModel> allStories = [];
@@ -43,7 +45,7 @@ class SocialStoryTabController extends SLoadingController<SocialStoryTabState> {
     if (_didInit) return;
     _didInit = true;
     getStories();
-    _timer = Timer.periodic(const Duration(seconds: 30), (timer) {
+    _timer = Timer.periodic(const Duration(seconds: 60), (timer) {
       getStoriesFromApi();
     });
     getMyStoryFromApi();
@@ -150,11 +152,18 @@ class SocialStoryTabController extends SLoadingController<SocialStoryTabState> {
     );
     if (res == null) return;
     if (res.id == "1") {
+      final ok = await StorySubscriptionHelper.guardCreateStory(
+        context,
+        StoryType.text,
+      );
+      if (!ok) return;
       await context.toPage(
         const CreateTextStory(storySource: 'social'),
       );
     }
     if (res.id == "2") {
+      final ok = await StorySubscriptionHelper.guardCreateMediaStory(context);
+      if (!ok) return;
       if (kIsWeb || VPlatforms.isDeskTop) {
         VAppAlert.showErrorSnackBar(
           context: context,
@@ -171,6 +180,11 @@ class SocialStoryTabController extends SLoadingController<SocialStoryTabState> {
           message: 'Voice stories are available on mobile only',
         );
       } else {
+        final ok = await StorySubscriptionHelper.guardCreateStory(
+          context,
+          StoryType.voice,
+        );
+        if (!ok) return;
         await context.toPage(
           const CreateVoiceStory(storySource: 'social'),
         );

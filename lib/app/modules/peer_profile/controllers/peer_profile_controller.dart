@@ -65,9 +65,17 @@ class PeerProfileController extends SLoadingController<PeerProfileModel?> {
         final updatedFollowersCount = wasFollowing
             ? (current.followersCount - 1).clamp(0, 1 << 31)
             : current.followersCount + 1;
+        final isFollowingNow = !wasFollowing;
+        final followsOrPublic =
+            current.userPrivacy.publicSearch || isFollowingNow;
 
         value.data = current.copyWith(
-          isFollowing: !wasFollowing,
+          isFollowing: isFollowingNow,
+          canViewFollowers:
+              followsOrPublic && !current.userPrivacy.hideFollowers,
+          canViewFollowing:
+              followsOrPublic && !current.userPrivacy.hideFollowing,
+          canViewGallery: followsOrPublic,
           followersCount: updatedFollowersCount,
         );
         notifyListeners();

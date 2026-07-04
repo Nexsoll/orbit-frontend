@@ -194,7 +194,8 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="${auth0Scheme}"
-                      android:host="${auth0Domain}" />
+                      android:host="${auth0Domain}"
+                      android:pathPrefix="/android/${applicationId}/callback" />
             </intent-filter>
 
         </activity>

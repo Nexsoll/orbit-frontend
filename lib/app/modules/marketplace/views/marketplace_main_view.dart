@@ -72,6 +72,8 @@ class _MarketplaceMainViewState extends State<MarketplaceMainView> {
   bool _loadingFeed = false;
   String? _feedError;
   List<Map<String, dynamic>> _feedItems = const [];
+  List<_MarketplaceCategory> _dynamicCategories = [];
+  bool _loadingCategories = false;
 
   // Promotion state
   bool _loadingPromotion = false;
@@ -322,6 +324,8 @@ class _MarketplaceMainViewState extends State<MarketplaceMainView> {
   void initState() {
     super.initState();
     _marketApi = GetIt.I.get<MarketplaceApiService>();
+    _dynamicCategories = List.from(_categories);
+    _loadCategories();
     unawaited(_loadSoldEarnings());
     unawaited(_loadAnalytics());
     unawaited(_loadFeaturedListings());
@@ -329,6 +333,74 @@ class _MarketplaceMainViewState extends State<MarketplaceMainView> {
     _loadSellerStatus();
     _loadForYouFeed();
     _listenMarketplaceUnread();
+  }
+
+  IconData _getCategoryIcon(String name) {
+    final norm = name.trim().toLowerCase();
+    if (norm.contains('real estate') || norm.contains('house') || norm.contains('property')) {
+      return CupertinoIcons.house_fill;
+    }
+    if (norm.contains('vehicle') || norm.contains('car') || norm.contains('motorcycle') || norm.contains('bike')) {
+      return CupertinoIcons.car_detailed;
+    }
+    if (norm.contains('electron') || norm.contains('tv') || norm.contains('phone') || norm.contains('laptop') || norm.contains('computer')) {
+      return CupertinoIcons.tv;
+    }
+    if (norm.contains('furniture') || norm.contains('home') || norm.contains('bed')) {
+      return CupertinoIcons.bed_double;
+    }
+    if (norm.contains('clothing') || norm.contains('fashion') || norm.contains('clothes') || norm.contains('bag')) {
+      return CupertinoIcons.bag;
+    }
+    if (norm.contains('pet') || norm.contains('animal') || norm.contains('dog') || norm.contains('cat')) {
+      return CupertinoIcons.paw;
+    }
+    if (norm.contains('service') || norm.contains('repair') || norm.contains('wrench')) {
+      return CupertinoIcons.wrench;
+    }
+    if (norm.contains('business') || norm.contains('industrial') || norm.contains('office') || norm.contains('job')) {
+      return CupertinoIcons.briefcase;
+    }
+    if (norm.contains('kid') || norm.contains('baby') || norm.contains('toy')) {
+      return CupertinoIcons.cube_box;
+    }
+    if (norm.contains('sport') || norm.contains('fitness') || norm.contains('gym')) {
+      return CupertinoIcons.sportscourt;
+    }
+    if (norm.contains('book') || norm.contains('magazine') || norm.contains('read')) {
+      return CupertinoIcons.book;
+    }
+    if (norm.contains('music') || norm.contains('hobby') || norm.contains('instrument')) {
+      return CupertinoIcons.music_note_2;
+    }
+    return CupertinoIcons.tag_fill;
+  }
+
+  Future<void> _loadCategories() async {
+    setState(() => _loadingCategories = true);
+    try {
+      final list = await _marketApi.getCategories();
+      if (!mounted) return;
+      setState(() {
+        if (list.isNotEmpty) {
+          _dynamicCategories = list.map((name) {
+            return _MarketplaceCategory(
+              name: name,
+              icon: _getCategoryIcon(name),
+            );
+          }).toList();
+        } else {
+          _dynamicCategories = List.from(_categories);
+        }
+        _loadingCategories = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _dynamicCategories = List.from(_categories);
+        _loadingCategories = false;
+      });
+    }
   }
 
   Future<void> _loadSoldEarnings() async {
@@ -2416,10 +2488,10 @@ class _MarketplaceMainViewState extends State<MarketplaceMainView> {
   Widget _buildCategoriesList(CupertinoThemeData theme) {
     return ListView.separated(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      itemCount: _categories.length,
+      itemCount: _dynamicCategories.length,
       separatorBuilder: (_, __) => const Divider(height: 1),
       itemBuilder: (context, index) {
-        final cat = _categories[index];
+        final cat = _dynamicCategories[index];
         return CupertinoButton(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
           onPressed: () {

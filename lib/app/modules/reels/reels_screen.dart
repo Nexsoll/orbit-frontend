@@ -19,6 +19,7 @@ import 'package:super_up/app/modules/post/post_caption_text.dart';
 import 'package:super_up/app/modules/post/post_comment_sheet.dart';
 import 'package:super_up/app/modules/post/services/post_saved_posts_service.dart';
 import 'package:super_up/app/widgets/custom_circle_avatar.dart';
+import 'package:super_up/app/modules/story/story_subscription/story_subscription_helper.dart';
 import 'package:super_up_core/super_up_core.dart';
 import 'package:v_chat_sdk_core/v_chat_sdk_core.dart';
 import 'package:video_player/video_player.dart';
@@ -28,7 +29,8 @@ class ReelsScreen extends StatefulWidget {
   final bool isActive;
   final int initialReelIndex;
 
-  const ReelsScreen({super.key, this.isActive = true, this.initialReelIndex = 0});
+  const ReelsScreen(
+      {super.key, this.isActive = true, this.initialReelIndex = 0});
 
   @override
   State<ReelsScreen> createState() => _ReelsScreenState();
@@ -175,38 +177,15 @@ class _ReelsScreenState extends State<ReelsScreen> with WidgetsBindingObserver {
       _isLoading = true;
     });
     try {
-      final reels = await _postApiService.getReels(
+      final reels = await _postApiService.getCachedReels(
         page: 1,
         limit: _limit,
+        onFreshData: (fresh) {
+          if (!mounted) return;
+          _applyReels(fresh);
+        },
       );
-      final savedIds = await _savedPostsService.getSavedIds();
-      if (mounted) {
-        setState(() {
-          _reels.clear();
-          _reels.addAll(reels);
-          _currentPage = 1;
-          _hasMore = reels.length >= _limit;
-          _isLoading = false;
-          _likedMap.clear();
-          _likeCountMap.clear();
-          _commentCountMap.clear();
-          _shareCountMap.clear();
-          _savedMap.clear();
-          _followingMap.clear();
-          for (var i = 0; i < reels.length; i++) {
-            _likedMap[i] = reels[i].isLiked;
-            _likeCountMap[i] = reels[i].likesCount;
-            _commentCountMap[i] = reels[i].commentsCount;
-            _shareCountMap[i] = reels[i].sharesCount;
-            _savedMap[i] = savedIds.contains(reels[i].id);
-            _followingMap[i] = reels[i].author.isFollowing || _isOwner(reels[i]);
-          }
-        });
-        if (reels.isNotEmpty) {
-          // Preload current + next 2 videos for instant playback
-          _preloadAround(_currentVisibleIndex);
-        }
-      }
+      _applyReels(reels);
     } catch (e) {
       debugPrint('Error loading reels: $e');
       if (mounted) {
@@ -219,6 +198,43 @@ class _ReelsScreenState extends State<ReelsScreen> with WidgetsBindingObserver {
             backgroundColor: Colors.red,
           ),
         );
+      }
+    }
+  }
+
+  void _applyReels(List<PostModel> reels) {
+    final savedIds = <String>{};
+    _savedPostsService.getSavedIds().then((ids) {
+      if (!mounted) return;
+      setState(() {
+        for (var i = 0; i < _reels.length; i++) {
+          _savedMap[i] = ids.contains(_reels[i].id);
+        }
+      });
+    });
+    if (mounted) {
+      setState(() {
+        _reels.clear();
+        _reels.addAll(reels);
+        _currentPage = 1;
+        _hasMore = reels.length >= _limit;
+        _isLoading = false;
+        _likedMap.clear();
+        _likeCountMap.clear();
+        _commentCountMap.clear();
+        _shareCountMap.clear();
+        _followingMap.clear();
+        for (var i = 0; i < reels.length; i++) {
+          _likedMap[i] = reels[i].isLiked;
+          _likeCountMap[i] = reels[i].likesCount;
+          _commentCountMap[i] = reels[i].commentsCount;
+          _shareCountMap[i] = reels[i].sharesCount;
+          _savedMap[i] = savedIds.contains(reels[i].id);
+          _followingMap[i] = reels[i].author.isFollowing || _isOwner(reels[i]);
+        }
+      });
+      if (reels.isNotEmpty) {
+        _preloadAround(_currentVisibleIndex);
       }
     }
   }
@@ -249,7 +265,8 @@ class _ReelsScreenState extends State<ReelsScreen> with WidgetsBindingObserver {
             _commentCountMap[idx] = reels[i].commentsCount;
             _shareCountMap[idx] = reels[i].sharesCount;
             _savedMap[idx] = savedIds.contains(reels[i].id);
-            _followingMap[idx] = reels[i].author.isFollowing || _isOwner(reels[i]);
+            _followingMap[idx] =
+                reels[i].author.isFollowing || _isOwner(reels[i]);
           }
         });
       }
@@ -282,7 +299,8 @@ class _ReelsScreenState extends State<ReelsScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _toggleFollow(int index) async {
-    if (_followingSet.contains(index) || index < 0 || index >= _reels.length) return;
+    if (_followingSet.contains(index) || index < 0 || index >= _reels.length)
+      return;
     final reel = _reels[index];
     if (_isOwner(reel)) return;
 
@@ -402,7 +420,9 @@ class _ReelsScreenState extends State<ReelsScreen> with WidgetsBindingObserver {
       return url;
     }
     // Don't double-transform if already optimized
-    if (url.contains('q_auto') || url.contains('w_720') || url.contains('w_480')) {
+    if (url.contains('q_auto') ||
+        url.contains('w_720') ||
+        url.contains('w_480')) {
       return url;
     }
     // Insert transformation: 720p width, auto quality, MP4 format
@@ -513,7 +533,8 @@ class _ReelsScreenState extends State<ReelsScreen> with WidgetsBindingObserver {
       context: context,
       builder: (ctx) => CupertinoActionSheet(
         title: const Text('Playback Speed'),
-        message: Text('Current: ${_playbackSpeed.toStringAsFixed(_playbackSpeed == _playbackSpeed.roundToDouble() ? 0 : 1)}x'),
+        message: Text(
+            'Current: ${_playbackSpeed.toStringAsFixed(_playbackSpeed == _playbackSpeed.roundToDouble() ? 0 : 1)}x'),
         actions: [
           CupertinoActionSheetAction(
             onPressed: () {
@@ -563,7 +584,8 @@ class _ReelsScreenState extends State<ReelsScreen> with WidgetsBindingObserver {
     final wasLiked = _likedMap[index] ?? reel.isLiked;
     setState(() {
       _likedMap[index] = !wasLiked;
-      _likeCountMap[index] = (_likeCountMap[index] ?? reel.likesCount) + (wasLiked ? -1 : 1);
+      _likeCountMap[index] =
+          (_likeCountMap[index] ?? reel.likesCount) + (wasLiked ? -1 : 1);
     });
     try {
       await _postApiService.likePost(reel.id);
@@ -572,7 +594,8 @@ class _ReelsScreenState extends State<ReelsScreen> with WidgetsBindingObserver {
       if (mounted) {
         setState(() {
           _likedMap[index] = wasLiked;
-          _likeCountMap[index] = (_likeCountMap[index] ?? reel.likesCount) + (wasLiked ? 1 : -1);
+          _likeCountMap[index] =
+              (_likeCountMap[index] ?? reel.likesCount) + (wasLiked ? 1 : -1);
         });
       }
       debugPrint('Like error: $e');
@@ -646,7 +669,8 @@ class _ReelsScreenState extends State<ReelsScreen> with WidgetsBindingObserver {
 
     if (action == null) return;
     if (action == 'story_main') return _shareReelToStory(index, source: 'main');
-    if (action == 'story_social') return _shareReelToStory(index, source: 'social');
+    if (action == 'story_social')
+      return _shareReelToStory(index, source: 'social');
     if (action == 'chat') return _shareReelToChat(index);
     if (action == 'link') return _shareReelLink(index);
   }
@@ -697,16 +721,21 @@ class _ReelsScreenState extends State<ReelsScreen> with WidgetsBindingObserver {
         const upload = '/upload/';
         final idx = path.indexOf(upload);
         if (idx == -1) return '';
-        final prefix = '${uri.scheme}://${uri.host}${path.substring(0, idx + upload.length)}';
-        final tail = path.substring(idx + upload.length).replaceFirst(RegExp(r'^/+'), '');
+        final prefix =
+            '${uri.scheme}://${uri.host}${path.substring(0, idx + upload.length)}';
+        final tail = path
+            .substring(idx + upload.length)
+            .replaceFirst(RegExp(r'^/+'), '');
         final jpgTail = tail.replaceFirst(RegExp(r'\.[^./]+$'), '.jpg');
         return '${prefix}so_1,w_640,h_360,c_fill,f_jpg/$jpgTail';
       }
 
-      String _full(String raw) =>
-          raw.isEmpty ? raw : (raw.startsWith('http') ? raw : '${SConstants.baseMediaUrl}$raw');
+      String _full(String raw) => raw.isEmpty
+          ? raw
+          : (raw.startsWith('http') ? raw : '${SConstants.baseMediaUrl}$raw');
       final mediaUrl = _full(rawMedia);
-      final rawThumb = reel.media?.thumbnail ?? _deriveCloudinaryThumb(mediaUrl);
+      final rawThumb =
+          reel.media?.thumbnail ?? _deriveCloudinaryThumb(mediaUrl);
       final thumb = _full(rawThumb);
       final payload = <String, dynamic>{
         'type': 'post_share',
@@ -784,18 +813,22 @@ class _ReelsScreenState extends State<ReelsScreen> with WidgetsBindingObserver {
       const upload = '/upload/';
       final idx = path.indexOf(upload);
       if (idx == -1) return '';
-      final prefix = '${uri.scheme}://${uri.host}${path.substring(0, idx + upload.length)}';
-      final tail = path.substring(idx + upload.length).replaceFirst(RegExp(r'^/+'), '');
+      final prefix =
+          '${uri.scheme}://${uri.host}${path.substring(0, idx + upload.length)}';
+      final tail =
+          path.substring(idx + upload.length).replaceFirst(RegExp(r'^/+'), '');
       final jpgTail = tail.replaceFirst(RegExp(r'\.[^./]+$'), '.jpg');
       return '${prefix}so_1,w_640,h_360,c_fill,f_jpg/$jpgTail';
     }
 
     // Resolve full URLs for the story card attachment
     final rawMediaUrl = reel.media?.url ?? '';
-    String _full(String raw) =>
-        raw.isEmpty ? raw : (raw.startsWith('http') ? raw : '${SConstants.baseMediaUrl}$raw');
+    String _full(String raw) => raw.isEmpty
+        ? raw
+        : (raw.startsWith('http') ? raw : '${SConstants.baseMediaUrl}$raw');
     final fullMediaUrl = _full(rawMediaUrl);
-    final rawThumbUrl = reel.media?.thumbnail ?? _deriveCloudinaryThumb(fullMediaUrl);
+    final rawThumbUrl =
+        reel.media?.thumbnail ?? _deriveCloudinaryThumb(fullMediaUrl);
     final fullThumbUrl = _full(rawThumbUrl);
 
     // Use text story with black background; post card overlay shows on top
@@ -850,14 +883,18 @@ class _ReelsScreenState extends State<ReelsScreen> with WidgetsBindingObserver {
       Navigator.of(context).pop();
       final res = await _postApiService.sharePost(reel.id);
       final count = (res['sharesCount'] as num?)?.toInt();
-      if (mounted && count != null) setState(() => _shareCountMap[index] = count);
+      if (mounted && count != null)
+        setState(() => _shareCountMap[index] = count);
       VAppAlert.showSuccessSnackBar(
           context: context,
-          message: 'Shared to your ${source == 'social' ? 'Social' : 'Main'} Story');
+          message:
+              'Shared to your ${source == 'social' ? 'Social' : 'Main'} Story');
     } catch (e) {
       if (!mounted) return;
       Navigator.of(context).pop();
-      VAppAlert.showErrorSnackBar(context: context, message: e.toString());
+      final msg = e.toString();
+      if (StorySubscriptionHelper.openIfRequired(context, msg)) return;
+      VAppAlert.showErrorSnackBar(context: context, message: msg);
     } finally {
       if (mounted) setState(() => _sharingSet.remove(index));
     }
@@ -970,7 +1007,7 @@ class _ReelsScreenState extends State<ReelsScreen> with WidgetsBindingObserver {
           if (reel.media?.thumbnail != null)
             CachedNetworkImage(
               imageUrl: reel.media!.thumbnail!,
-              fit: BoxFit.cover,
+              fit: BoxFit.contain,
               placeholder: (context, url) => Container(
                 color: Colors.black,
                 child: const Center(
@@ -1013,9 +1050,9 @@ class _ReelsScreenState extends State<ReelsScreen> with WidgetsBindingObserver {
         fit: StackFit.expand,
         alignment: Alignment.center,
         children: [
-          AspectRatio(
-            aspectRatio: controller.value.aspectRatio,
-            child: VideoPlayer(controller),
+          Container(
+            color: Colors.black,
+            child: _buildAspectPreservingVideo(controller),
           ),
           // Only show play button when user manually paused
           if (_userPaused[index] == true && !controller.value.isPlaying)
@@ -1028,6 +1065,26 @@ class _ReelsScreenState extends State<ReelsScreen> with WidgetsBindingObserver {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAspectPreservingVideo(VideoPlayerController controller) {
+    final size = controller.value.size;
+    final aspectRatio = controller.value.aspectRatio;
+    final width = size.width > 0 ? size.width : 9.0;
+    final height = size.height > 0
+        ? size.height
+        : width / (aspectRatio > 0 ? aspectRatio : 9 / 16);
+
+    return Center(
+      child: FittedBox(
+        fit: BoxFit.contain,
+        child: SizedBox(
+          width: width,
+          height: height,
+          child: VideoPlayer(controller),
+        ),
       ),
     );
   }
@@ -1194,7 +1251,8 @@ class _ReelsScreenState extends State<ReelsScreen> with WidgetsBindingObserver {
         const SizedBox(height: 20),
         _buildSideActionItem(
           icon: CupertinoIcons.speedometer,
-          label: '${_playbackSpeed.toStringAsFixed(_playbackSpeed == _playbackSpeed.roundToDouble() ? 0 : 1)}x',
+          label:
+              '${_playbackSpeed.toStringAsFixed(_playbackSpeed == _playbackSpeed.roundToDouble() ? 0 : 1)}x',
           onTap: _showSpeedPicker,
         ),
         const SizedBox(height: 20),

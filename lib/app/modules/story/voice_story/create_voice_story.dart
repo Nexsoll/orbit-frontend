@@ -12,6 +12,7 @@ import 'package:v_chat_input_ui/src/recorder/record_widget.dart';
 
 import '../story_privacy/story_privacy_selection_screen.dart';
 import '../../social/controllers/social_story_tab_controller.dart';
+import '../story_subscription/story_subscription_helper.dart';
 
 class CreateVoiceStory extends StatefulWidget {
   final String storySource;
@@ -209,10 +210,9 @@ class _CreateVoiceStoryState extends State<CreateVoiceStory> {
       },
       onError: (exception, trace) {
         context.pop();
-        VAppAlert.showErrorSnackBar(
-          context: context,
-          message: exception.toString(),
-        );
+        final msg = exception.toString();
+        if (StorySubscriptionHelper.openIfRequired(context, msg)) return;
+        VAppAlert.showErrorSnackBar(context: context, message: msg);
       },
     );
   }

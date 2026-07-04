@@ -4,12 +4,12 @@
 
 class ResetPasswordDto {
   final String newPassword;
-  final String token; // Changed from code to token for link-based reset
+  final String code;
   final String email;
 
-  ResetPasswordDto(this.newPassword, this.token, this.email);
+  ResetPasswordDto(this.newPassword, this.code, this.email);
 
   Map<String, dynamic> toMap() {
-    return {'newPassword': newPassword, 'token': token, 'email': email};
+    return {'newPassword': newPassword, 'code': code, 'email': email};
   }
 }

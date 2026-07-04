@@ -14,6 +14,7 @@ import 'package:super_up/app/core/services/story_status_service.dart';
 import 'package:super_up/app/core/services/user_verification_service.dart';
 import 'package:super_up/app/core/services/balance_service.dart';
 import 'package:super_up/app/core/api_service/profile/profile_api_service.dart';
+import 'package:super_up/app/core/api_service/election/election_api_service.dart';
 import 'package:super_up/app/core/models/story/story_model.dart';
 import 'package:super_up/v_chat_v2/translations.dart';
 import 'package:super_up_core/super_up_core.dart';
@@ -36,7 +37,10 @@ import '../../../../music/views/music_home_view.dart';
 import 'package:super_up/app/core/widgets/app_logo.dart';
 import '../../../../marketplace/views/marketplace_splash_view.dart';
 import '../../../../tickets/views/tickets_home_view.dart';
-import '../../../../send_money/views/send_money_user_picker.dart';
+import '../../../settings_modules/wallet/views/wallet_page.dart';
+import 'package:flutter_screen_recording/flutter_screen_recording.dart';
+import 'package:gal/gal.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class RoomsTabView extends StatefulWidget {
   const RoomsTabView({super.key});
@@ -60,11 +64,15 @@ class _RoomsTabViewState extends State<RoomsTabView>
   StreamSubscription<VMessageEvents>? _messageEventsSubscription;
   int _liveRev = 0;
   int _roomsRev = 0;
+  bool _isRecording = false;
   bool _isMenuOpen = false;
   _ChatListFilter _selectedChatFilter = _ChatListFilter.all;
   late final AnimationController _drawerAnimationController;
   late final Animation<Offset> _drawerSlideAnimation;
   int? _dismissedAnnouncementUpdatedAt;
+  List<Map<String, dynamic>> _activeElections = [];
+  bool _loadingElections = false;
+  final Set<String> _expandedElections = {};
 
   @override
   void initState() {
@@ -98,7 +106,8 @@ class _RoomsTabViewState extends State<RoomsTabView>
     // Listen to global message events so chat list reflects latest messages
     _messageEventsSubscription = VChatController
         .I.nativeApi.streams.messageStream
-        .where((event) => event is VInsertMessageEvent)
+        .where((event) =>
+            event is VInsertMessageEvent || event is VUpdateMessageEvent)
         .listen((event) async {
       await controller.vRoomController.refreshFromLocal();
       await _refreshGroupsChannelsUnread();
@@ -112,6 +121,7 @@ class _RoomsTabViewState extends State<RoomsTabView>
     // Initialize storage warning service
     WidgetsBinding.instance.addPostFrameCallback((_) {
       StorageWarningService().checkStorageUsage();
+      _loadElections();
 
       unawaited(() async {
         try {
@@ -191,6 +201,471 @@ class _RoomsTabViewState extends State<RoomsTabView>
     final updatedAt = config.announcementUpdatedAt ?? 0;
     final dismissed = _dismissedAnnouncementUpdatedAt ?? 0;
     return updatedAt > dismissed;
+  }
+
+  Future<void> _loadElections() async {
+    if (VAppPref.getHashedString(key: SStorageKeys.vAccessToken.name) == null) {
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _loadingElections = true;
+      });
+    }
+    try {
+      final list = await ElectionApiService.I.getActiveElections();
+      if (mounted) {
+        setState(() {
+          _activeElections = list;
+          _loadingElections = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _loadingElections = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _voteElection(String electionId, String optionId) async {
+    try {
+      final updatedResult = await ElectionApiService.I.vote(
+        electionId: electionId,
+        optionId: optionId,
+      );
+      if (mounted) {
+        setState(() {
+          final index = _activeElections.indexWhere((e) => e['_id'] == electionId);
+          if (index != -1) {
+            _activeElections[index] = updatedResult;
+          }
+        });
+      }
+    } catch (e) {
+      VAppAlert.showErrorSnackBarWithoutContext(message: 'Failed to vote: $e');
+    }
+  }
+
+  Future<void> _removeElectionVote(String electionId) async {
+    try {
+      final updatedResult = await ElectionApiService.I.removeVote(
+        electionId: electionId,
+      );
+      if (mounted) {
+        setState(() {
+          final index = _activeElections.indexWhere((e) => e['_id'] == electionId);
+          if (index != -1) {
+            _activeElections[index] = updatedResult;
+          }
+        });
+      }
+    } catch (e) {
+      VAppAlert.showErrorSnackBarWithoutContext(message: 'Failed to remove vote: $e');
+    }
+  }
+
+  String? _getMyVotedOptionId(Map<String, dynamic> election) {
+    final myId = AppAuth.myId;
+    if (myId == null) return null;
+    final options = election['options'] as List? ?? [];
+    for (final opt in options) {
+      final voters = (opt['voters'] as List? ?? []).cast<String>();
+      if (voters.contains(myId)) {
+        return opt['id'] as String?;
+      }
+    }
+    return null;
+  }
+
+  Widget _buildElectionBanners() {
+    if (_activeElections.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: _activeElections.map((election) {
+        final electionId = election['_id'] as String;
+        final question = election['question'] as String? ?? '';
+        final options = (election['options'] as List? ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        
+        final votedOptionId = _getMyVotedOptionId(election);
+        final hasVoted = votedOptionId != null;
+
+        if (hasVoted && !_expandedElections.contains(electionId)) {
+          return Container(
+            width: double.infinity,
+            margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            decoration: BoxDecoration(
+              color: context.isDark ? const Color(0xFF1E1E24) : const Color(0xFFF9F6F0),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: const Color(0xFFB48648).withOpacity(0.35),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.03),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: InkWell(
+              onTap: () {
+                setState(() {
+                  _expandedElections.add(electionId);
+                });
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.how_to_vote,
+                      color: Color(0xFFB48648),
+                      size: 18,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Election: $question (Voted)',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: context.isDark ? Colors.white70 : Colors.black87,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'View Results',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFFB48648),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Icon(
+                      Icons.chevron_right,
+                      size: 16,
+                      color: Color(0xFFB48648),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
+        final totalVotes = options.fold<int>(0, (sum, opt) => sum + (opt['count'] as int? ?? 0));
+        final displayTotal = totalVotes == 0 ? 1 : totalVotes;
+
+        return Container(
+          width: double.infinity,
+          margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: context.isDark ? const Color(0xFF1E1E24) : const Color(0xFFF9F6F0),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: const Color(0xFFB48648).withOpacity(0.3),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.how_to_vote,
+                    color: Color(0xFFB48648),
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Active Election',
+                    style: TextStyle(
+                      color: Color(0xFFB48648),
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (hasVoted) ...[
+                    IconButton(
+                      icon: const Icon(Icons.keyboard_arrow_up, size: 20, color: Color(0xFFB48648)),
+                      onPressed: () {
+                        setState(() {
+                          _expandedElections.remove(electionId);
+                        });
+                      },
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      onPressed: () => _removeElectionVote(electionId),
+                      icon: const Icon(Icons.undo, size: 14, color: Colors.redAccent),
+                      label: const Text(
+                        'Remove Vote',
+                        style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.w600),
+                      ),
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                question,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: context.isDark ? Colors.white : const Color(0xFF2C2C2C),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ...options.map((opt) {
+                final optId = opt['id'] as String;
+                final text = opt['text'] as String? ?? '';
+                final count = opt['count'] as int? ?? 0;
+                final isSelected = votedOptionId == optId;
+                final percentage = (count / displayTotal) * 100;
+                final fraction = count / displayTotal;
+
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: InkWell(
+                    onTap: () => _voteElection(electionId, optId),
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: isSelected
+                              ? const Color(0xFFB48648)
+                              : (context.isDark ? Colors.grey.shade800 : Colors.grey.shade300),
+                          width: isSelected ? 1.8 : 1.0,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Stack(
+                        children: [
+                          if (hasVoted)
+                            Positioned.fill(
+                              child: FractionallySizedBox(
+                                alignment: Alignment.centerLeft,
+                                widthFactor: fraction.clamp(0, 1),
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFB48648).withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    text,
+                                    style: TextStyle(
+                                      fontSize: 13.5,
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                      color: context.isDark ? Colors.white : Colors.black87,
+                                    ),
+                                  ),
+                                ),
+                                if (hasVoted) ...[
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '${percentage.toStringAsFixed(0)}% ($count)',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                      color: isSelected ? const Color(0xFFB48648) : Colors.grey,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '$totalVotes total votes',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: context.isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => _showElectionVoters(election),
+                    child: const Text(
+                      'View all votes',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFFB48648),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  void _showElectionVoters(Map<String, dynamic> election) {
+    final question = election['question'] as String? ?? 'Election';
+    final options = (election['options'] as List? ?? []).cast<Map>();
+
+    showCupertinoModalPopup(
+      context: context,
+      builder: (_) {
+        return CupertinoActionSheet(
+          title: Text(
+            question,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          message: SizedBox(
+            height: 380,
+            child: Material(
+              color: Colors.transparent,
+              child: ListView.builder(
+                itemCount: options.length,
+                itemBuilder: (ctx, i) {
+                  final o = options[i];
+                  final voterProfiles = (o['voterProfiles'] as List? ?? []).cast<Map>();
+                  
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFB48648),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${o['text']} • ${o['count']} votes',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        if (voterProfiles.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.only(left: 16),
+                            child: Text(
+                              'No votes yet',
+                              style: TextStyle(color: Colors.grey, fontSize: 13),
+                            ),
+                          )
+                        else
+                          Padding(
+                            padding: const EdgeInsets.only(left: 16),
+                            child: Wrap(
+                              spacing: 8,
+                              runSpacing: 6,
+                              children: voterProfiles.map((p) {
+                                final name = (p['name'] ?? 'User').toString();
+                                final image = p['image'] as String?;
+                                
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: context.isDark ? Colors.grey.shade900 : Colors.grey.shade100,
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: context.isDark ? Colors.grey.shade800 : Colors.grey.shade300,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (image != null && image.isNotEmpty) ...[
+                                        CircleAvatar(
+                                          radius: 8,
+                                          backgroundImage: NetworkImage(image),
+                                        ),
+                                        const SizedBox(width: 6),
+                                      ],
+                                      Text(
+                                        name,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                          color: context.isDark ? Colors.white70 : Colors.black87,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                        const SizedBox(height: 8),
+                        Divider(color: Colors.grey.withOpacity(0.2)),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          actions: [
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _dismissAnnouncement() async {
@@ -498,6 +973,7 @@ class _RoomsTabViewState extends State<RoomsTabView>
     if (state == AppLifecycleState.resumed) {
       // Check storage when app comes back to foreground
       StorageWarningService().checkStorageUsage();
+      unawaited(_loadElections());
 
       unawaited(() async {
         try {
@@ -629,7 +1105,7 @@ class _RoomsTabViewState extends State<RoomsTabView>
                       Padding(
                         padding: const EdgeInsets.only(right: 16.0),
                         child: GestureDetector(
-                          onTap: _onSendMoneyTap,
+                          onTap: () => context.toPage(const WalletPage()),
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                             decoration: BoxDecoration(
@@ -640,13 +1116,13 @@ class _RoomsTabViewState extends State<RoomsTabView>
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
-                                  Icons.wallet,
+                                  Icons.account_balance_wallet,
                                   size: 16,
                                   color: Colors.white,
                                 ),
                                 SizedBox(width: 6),
                                 Text(
-                                  'Send Money',
+                                  'Wallet',
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 14,
@@ -721,7 +1197,7 @@ class _RoomsTabViewState extends State<RoomsTabView>
                     padding: EdgeInsets.zero,
                     minimumSize: Size.zero,
                     child: Icon(
-                      CupertinoIcons.settings,
+                      CupertinoIcons.person,
                       size: 26,
                       color: Color(0xFFB48648),
                     ),
@@ -780,6 +1256,7 @@ class _RoomsTabViewState extends State<RoomsTabView>
             },
             body: Column(
               children: [
+                _buildElectionBanners(),
                 if (_shouldShowAnnouncementBanner()) _buildAnnouncementBanner(),
                 const StorageWarningBanner(),
                 Expanded(
@@ -947,6 +1424,7 @@ class _RoomsTabViewState extends State<RoomsTabView>
                         onCameraPress: () {
                           controller.onCameraPress(this.context);
                         },
+                        onScreenRecordPress: null,
                         onCreateNewGroup: null,
                         appBar: null,
                         showDisconnectedWidget: false,
@@ -987,13 +1465,79 @@ class _RoomsTabViewState extends State<RoomsTabView>
               heroTag: 'aiAssistantFab',
               onPressed: () => controller.onAiAssistantPress(context),
               backgroundColor: Colors.grey.shade800,
-              child: const Icon(
-                Icons.smart_toy,
-                color: Colors.white,
-                size: 28,
+              child: Image.asset(
+                'assets/ai-logo.png',
+                width: 40,
+                height: 40,
               ),
             ),
           ),
+          // Stop Screen Recording Floating Panel
+          if (_isRecording)
+            Positioned(
+              bottom: 150,
+              left: 20,
+              right: 20,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(color: const Color(0xFFB48648), width: 1.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.4),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const _PulsingRecordDot(),
+                      const SizedBox(width: 10),
+                      const Text(
+                        'REC',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        height: 16,
+                        width: 1,
+                        color: Colors.white30,
+                      ),
+                      const SizedBox(width: 8),
+                      TextButton.icon(
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          backgroundColor: Colors.red.shade700,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                        ),
+                        onPressed: _stopScreenRecording,
+                        icon: const Icon(Icons.stop, color: Colors.white, size: 16),
+                        label: const Text(
+                          'Stop',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           if (_isMenuOpen)
             Positioned.fill(
               child: Stack(
@@ -1099,172 +1643,6 @@ class _RoomsTabViewState extends State<RoomsTabView>
     );
   }
 
-  Future<void> _onSendMoneyTap() async {
-    final selectedUser = await showCupertinoModalBottomSheet<SSearchUser?>(
-      expand: true,
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => const SendMoneyUserPicker(),
-    );
-    if (selectedUser == null) return;
-
-    final receiverId = selectedUser.baseUser.id;
-    final receiverName = selectedUser.baseUser.fullName;
-
-    // Amount dialog
-    final amtCtrl = TextEditingController();
-    String? res;
-    await showCupertinoDialog<void>(
-      context: context,
-      builder: (ctx) => CupertinoAlertDialog(
-        title: Text('Send to $receiverName'),
-        content: Padding(
-          padding: const EdgeInsets.only(top: 12),
-          child: CupertinoTextField(
-            controller: amtCtrl,
-            placeholder: 'Amount (KES)',
-            keyboardType: const TextInputType.numberWithOptions(decimal: false),
-            autofocus: true,
-          ),
-        ),
-        actions: [
-          CupertinoDialogAction(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          CupertinoDialogAction(
-            isDefaultAction: true,
-            onPressed: () {
-              res = 'ok';
-              Navigator.pop(ctx);
-            },
-            child: const Text('Next'),
-          ),
-        ],
-      ),
-    );
-
-    if (res != 'ok') return;
-    final amount = num.tryParse(amtCtrl.text.trim());
-    if (amount == null || amount <= 0) {
-      VAppAlert.showErrorSnackBar(
-        context: context,
-        message: 'Enter a valid amount',
-      );
-      return;
-    }
-
-    // Password confirmation
-    final verified = await _verifyPassword();
-    if (!verified) return;
-
-    VAppAlert.showLoading(context: context);
-    try {
-      await GetIt.I.get<ProfileApiService>().sendMoney(
-        receiverId: receiverId,
-        amount: amount,
-      );
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
-      await BalanceService.instance.init();
-
-      // Success dialog
-      await showCupertinoDialog<void>(
-        context: context,
-        builder: (ctx) => CupertinoAlertDialog(
-          title: const Text('Success'),
-          content: Text('KES ${amount.toStringAsFixed(0)} sent to $receiverName'),
-          actions: [
-            CupertinoDialogAction(
-              isDefaultAction: true,
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
-      final err = e.toString().toLowerCase();
-      final message = err.contains('insufficient') || err.contains('balance')
-          ? 'Insufficient balance. Please top up your wallet.'
-          : e.toString();
-      VAppAlert.showErrorSnackBar(context: context, message: message);
-    }
-  }
-
-  Future<bool> _verifyPassword() async {
-    final passwordCtrl = TextEditingController();
-    bool confirmed = false;
-    bool obscure = true;
-    await showCupertinoDialog<void>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => CupertinoAlertDialog(
-          title: const Text('Confirm with password'),
-          content: Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: CupertinoTextField(
-              controller: passwordCtrl,
-              placeholder: 'Password',
-              obscureText: obscure,
-              textInputAction: TextInputAction.done,
-              suffix: CupertinoButton(
-                padding: const EdgeInsets.only(right: 8),
-                minSize: 0,
-                onPressed: () => setDialogState(() => obscure = !obscure),
-                child: Icon(
-                  obscure ? CupertinoIcons.eye_slash : CupertinoIcons.eye,
-                  size: 18,
-                  color: CupertinoColors.systemGrey,
-                ),
-              ),
-            ),
-          ),
-          actions: [
-            CupertinoDialogAction(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
-            CupertinoDialogAction(
-              isDefaultAction: true,
-              onPressed: () {
-                confirmed = true;
-                Navigator.pop(ctx);
-              },
-              child: const Text('Confirm'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (!confirmed) return false;
-    final password = passwordCtrl.text.trim();
-    if (password.isEmpty) {
-      VAppAlert.showErrorSnackBar(
-        context: context,
-        message: 'Password is required',
-      );
-      return false;
-    }
-    VAppAlert.showLoading(context: context);
-    try {
-      await GetIt.I.get<ProfileApiService>().passwordCheck(password);
-      if (!mounted) return false;
-      Navigator.of(context, rootNavigator: true).pop();
-      return true;
-    } catch (e) {
-      if (!mounted) return false;
-      Navigator.of(context, rootNavigator: true).pop();
-      VAppAlert.showErrorSnackBar(
-        context: context,
-        message: 'Incorrect password',
-      );
-      return false;
-    }
-  }
-
   void _navigateToJobs(BuildContext context) {
     context.toPage(const JobsHomeView());
   }
@@ -1276,10 +1654,191 @@ class _RoomsTabViewState extends State<RoomsTabView>
   void _navigateToTickets(BuildContext context) {
     context.toPage(const TicketsHomeView());
   }
+
+  // ignore: unused_element
+  Future<void> _startScreenRecording() async {
+    if (_isRecording) return;
+
+    // Check gallery permission first
+    final hasAccess = await Gal.hasAccess();
+    if (!hasAccess) {
+      final granted = await Gal.requestAccess();
+      if (!granted) {
+        if (mounted) {
+          VAppAlert.showErrorSnackBar(
+            context: context,
+            message: 'Gallery permission is required to save recording',
+          );
+        }
+        return;
+      }
+    }
+
+    // Request notification permission for the foreground service notification on Android 13+
+    await Permission.notification.request();
+
+    try {
+      if (mounted) {
+        VAppAlert.showLoading(context: context, message: 'Preparing recorder...');
+      }
+
+      final fileName = 'orbit_record_${DateTime.now().millisecondsSinceEpoch}';
+      final started = await FlutterScreenRecording.startRecordScreen(
+        fileName,
+        titleNotification: 'Orbit Screen Recording',
+        messageNotification: 'Recording is in progress...',
+      );
+
+      if (mounted) {
+        context.pop(); // close loader
+      }
+
+      if (started == true) {
+        setState(() {
+          _isRecording = true;
+        });
+        if (mounted) {
+          VAppAlert.showSuccessSnackBar(
+            context: context,
+            message: 'Recording started!',
+          );
+        }
+      } else {
+        if (mounted) {
+          VAppAlert.showErrorSnackBar(
+            context: context,
+            message: 'Could not start screen recording',
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        context.pop(); // close loader
+        VAppAlert.showErrorSnackBar(
+          context: context,
+          message: 'Error starting recording: $e',
+        );
+      }
+    }
+  }
+
+  Future<void> _stopScreenRecording() async {
+    if (!_isRecording) return;
+
+    try {
+      if (mounted) {
+        VAppAlert.showLoading(context: context, message: 'Saving video to gallery...');
+      }
+
+      final String path = await FlutterScreenRecording.stopRecordScreen;
+
+      if (path.isNotEmpty) {
+        final hasAccess = await Gal.hasAccess();
+        if (!hasAccess) {
+          final granted = await Gal.requestAccess();
+          if (!granted) {
+            if (mounted) {
+              context.pop(); // close loader
+              VAppAlert.showErrorSnackBar(
+                context: context,
+                message: 'Gallery permission is required to save recording',
+              );
+            }
+            setState(() {
+              _isRecording = false;
+            });
+            return;
+          }
+        }
+
+        await Gal.putVideo(path);
+
+        if (mounted) {
+          context.pop(); // close loader
+          VAppAlert.showSuccessSnackBar(
+            context: context,
+            message: 'Recording saved to gallery!',
+          );
+        }
+      } else {
+        if (mounted) {
+          context.pop(); // close loader
+          VAppAlert.showErrorSnackBar(
+            context: context,
+            message: 'Recording path was empty',
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        context.pop(); // close loader
+        VAppAlert.showErrorSnackBar(
+          context: context,
+          message: 'Error saving video: $e',
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRecording = false;
+        });
+      }
+    }
+  }
 }
 
 extension StringExtension on String {
   String capitalize() {
     return "${this[0].toUpperCase()}${substring(1).toLowerCase()}";
+  }
+}
+
+class _PulsingRecordDot extends StatefulWidget {
+  const _PulsingRecordDot();
+
+  @override
+  State<_PulsingRecordDot> createState() => _PulsingRecordDotState();
+}
+
+class _PulsingRecordDotState extends State<_PulsingRecordDot> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          width: 8 + (4 * _controller.value),
+          height: 8 + (4 * _controller.value),
+          decoration: BoxDecoration(
+            color: Colors.red,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.red.withValues(alpha: 0.5 * (1 - _controller.value)),
+                blurRadius: 8,
+                spreadRadius: 4 * _controller.value,
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 }

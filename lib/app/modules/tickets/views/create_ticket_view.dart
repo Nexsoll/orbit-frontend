@@ -1,8 +1,8 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get_it/get_it.dart';
 import 'package:super_up_core/super_up_core.dart';
 import 'package:v_platform/v_platform.dart';
@@ -19,10 +19,10 @@ class CreateTicketView extends StatefulWidget {
 class _CreateTicketViewState extends State<CreateTicketView> {
   final _nameCtrl = TextEditingController();
   final _priceCtrl = TextEditingController();
+  final _quantityCtrl = TextEditingController(text: '1');
   DateTime? _expiryDate;
   VPlatformFile? _selectedImage;
   bool _saving = false;
-  int _quantity = 1;
   String? _selectedCategory;
 
   static const _brand = Color(0xFFB48648);
@@ -53,27 +53,33 @@ class _CreateTicketViewState extends State<CreateTicketView> {
   void dispose() {
     _nameCtrl.dispose();
     _priceCtrl.dispose();
+    _quantityCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
     final name = _nameCtrl.text.trim();
     final price = int.tryParse(_priceCtrl.text.trim());
+    final quantity = int.tryParse(_quantityCtrl.text.trim());
 
     if (name.isEmpty) {
-      VAppAlert.showErrorSnackBar(context: context, message: 'Please enter ticket name');
+      VAppAlert.showErrorSnackBar(
+          context: context, message: 'Please enter ticket name');
       return;
     }
     if (price == null || price <= 0) {
-      VAppAlert.showErrorSnackBar(context: context, message: 'Please enter a valid price');
+      VAppAlert.showErrorSnackBar(
+          context: context, message: 'Please enter a valid price');
       return;
     }
-    if (_quantity < 1) {
-      VAppAlert.showErrorSnackBar(context: context, message: 'Quantity must be at least 1');
+    if (quantity == null || quantity < 1) {
+      VAppAlert.showErrorSnackBar(
+          context: context, message: 'Quantity must be at least 1');
       return;
     }
     if (_expiryDate == null) {
-      VAppAlert.showErrorSnackBar(context: context, message: 'Please select expiry date');
+      VAppAlert.showErrorSnackBar(
+          context: context, message: 'Please select expiry date');
       return;
     }
 
@@ -83,14 +89,16 @@ class _CreateTicketViewState extends State<CreateTicketView> {
         name: name,
         priceKes: price,
         expiryDate: _expiryDate!.toUtc().toIso8601String(),
-        quantity: _quantity,
+        quantity: quantity.clamp(1, 999),
         category: _selectedCategory,
         image: _selectedImage,
       );
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } catch (e) {
-      if (mounted) VAppAlert.showErrorSnackBar(context: context, message: e.toString());
+      if (mounted) {
+        VAppAlert.showErrorSnackBar(context: context, message: e.toString());
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -103,7 +111,8 @@ class _CreateTicketViewState extends State<CreateTicketView> {
         setState(() => _selectedImage = file);
       }
     } catch (e) {
-      VAppAlert.showErrorSnackBar(context: context, message: 'Failed to pick image: $e');
+      VAppAlert.showErrorSnackBar(
+          context: context, message: 'Failed to pick image: $e');
     }
   }
 
@@ -124,7 +133,8 @@ class _CreateTicketViewState extends State<CreateTicketView> {
               height: 180,
               child: CupertinoDatePicker(
                 mode: CupertinoDatePickerMode.date,
-                initialDateTime: _expiryDate ?? now.add(const Duration(days: 30)),
+                initialDateTime:
+                    _expiryDate ?? now.add(const Duration(days: 30)),
                 minimumDate: now,
                 maximumDate: now.add(const Duration(days: 365 * 5)),
                 onDateTimeChanged: (d) {
@@ -141,7 +151,8 @@ class _CreateTicketViewState extends State<CreateTicketView> {
                 ),
                 CupertinoButton(
                   child: const Text('Select'),
-                  onPressed: () => Navigator.pop(context, _expiryDate ?? now.add(const Duration(days: 30))),
+                  onPressed: () => Navigator.pop(context,
+                      _expiryDate ?? now.add(const Duration(days: 30))),
                 ),
               ],
             ),
@@ -168,6 +179,7 @@ class _CreateTicketViewState extends State<CreateTicketView> {
         trailing: CupertinoButton(
           padding: const EdgeInsets.symmetric(horizontal: 8),
           onPressed: _saving ? null : _save,
+          color: _brand,
           child: _saving
               ? const CupertinoActivityIndicator()
               : const Text(
@@ -177,7 +189,6 @@ class _CreateTicketViewState extends State<CreateTicketView> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-          color: _brand,
         ),
       ),
       child: SafeArea(
@@ -229,7 +240,7 @@ class _CreateTicketViewState extends State<CreateTicketView> {
                             ),
                             CupertinoButton(
                               padding: EdgeInsets.zero,
-                              minSize: 30,
+                              minimumSize: const Size(30, 30),
                               onPressed: _clearImage,
                               child: const Icon(
                                 CupertinoIcons.xmark_circle_fill,
@@ -241,12 +252,14 @@ class _CreateTicketViewState extends State<CreateTicketView> {
                         )
                       : Row(
                           children: [
-                            const Icon(CupertinoIcons.photo, size: 20, color: _brand),
+                            const Icon(CupertinoIcons.photo,
+                                size: 20, color: _brand),
                             const SizedBox(width: 8),
                             Text(
                               'Add image',
                               style: TextStyle(
-                                color: CupertinoColors.placeholderText.resolveFrom(context),
+                                color: CupertinoColors.placeholderText
+                                    .resolveFrom(context),
                               ),
                             ),
                           ],
@@ -275,10 +288,12 @@ class _CreateTicketViewState extends State<CreateTicketView> {
                     context: context,
                     builder: (ctx) => CupertinoActionSheet(
                       title: const Text('Select Category'),
-                      actions: _categories.map((c) => CupertinoActionSheetAction(
-                        onPressed: () => Navigator.pop(ctx, c),
-                        child: Text(c),
-                      )).toList(),
+                      actions: _categories
+                          .map((c) => CupertinoActionSheetAction(
+                                onPressed: () => Navigator.pop(ctx, c),
+                                child: Text(c),
+                              ))
+                          .toList(),
                       cancelButton: CupertinoActionSheetAction(
                         onPressed: () => Navigator.pop(ctx),
                         child: const Text('Cancel'),
@@ -305,7 +320,8 @@ class _CreateTicketViewState extends State<CreateTicketView> {
                         _selectedCategory ?? 'Select category',
                         style: TextStyle(
                           color: _selectedCategory == null
-                              ? CupertinoColors.placeholderText.resolveFrom(context)
+                              ? CupertinoColors.placeholderText
+                                  .resolveFrom(context)
                               : CupertinoColors.black,
                         ),
                       ),
@@ -319,33 +335,15 @@ class _CreateTicketViewState extends State<CreateTicketView> {
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 6),
-              Row(
-                children: [
-                  CupertinoButton(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    minSize: 0,
-                    color: CupertinoColors.systemGrey5.resolveFrom(context),
-                    borderRadius: BorderRadius.circular(8),
-                    onPressed: _quantity <= 1
-                        ? null
-                        : () => setState(() => _quantity = (_quantity - 1).clamp(1, 999)),
-                    child: const Text('-', style: TextStyle(fontWeight: FontWeight.w800)),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    '$_quantity',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(width: 12),
-                  CupertinoButton(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    minSize: 0,
-                    color: CupertinoColors.systemGrey5.resolveFrom(context),
-                    borderRadius: BorderRadius.circular(8),
-                    onPressed: () => setState(() => _quantity = (_quantity + 1).clamp(1, 999)),
-                    child: const Text('+', style: TextStyle(fontWeight: FontWeight.w800)),
-                  ),
+              CupertinoTextField(
+                controller: _quantityCtrl,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(3),
                 ],
+                padding: const EdgeInsets.all(12),
+                placeholder: 'Enter quantity',
               ),
               const SizedBox(height: 20),
               const Text(
@@ -377,7 +375,8 @@ class _CreateTicketViewState extends State<CreateTicketView> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(CupertinoIcons.calendar, size: 20, color: _brand),
+                      const Icon(CupertinoIcons.calendar,
+                          size: 20, color: _brand),
                       const SizedBox(width: 8),
                       Text(
                         _expiryLabel,

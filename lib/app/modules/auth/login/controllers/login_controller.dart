@@ -22,6 +22,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../../../../core/api_service/auth/auth_api_service.dart';
 import '../../../../core/api_service/profile/profile_api_service.dart';
 import '../../../home/home_controller/views/home_view.dart';
+import '../../../splash/views/splash_view.dart';
 import '../../waiting_list/views/waiting_list_page.dart';
 import '../../profile_picture_upload/views/profile_picture_upload_view.dart';
 import '../../register/views/register_otp_modal.dart';
@@ -414,11 +415,15 @@ class LoginController implements SBaseController {
 
     if (status == RegisterStatus.accepted) {
       if (isAddingAccount) {
-        // When adding a new account, go back to settings
-        Navigator.of(context).pop();
-        VAppAlert.showSuccessSnackBar(
-          context: context,
-          message: S.of(context).accountAddedSuccessfully,
+        // Close loading dialog, then refresh app so the newly added account
+        // becomes the active runtime session immediately.
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+        context.toPage(
+          const SplashView(),
+          withAnimation: false,
+          removeAll: true,
         );
       } else {
         // Check if profile picture is missing

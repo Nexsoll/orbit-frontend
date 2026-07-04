@@ -358,9 +358,17 @@ class SingleRoomSettingsController
         final updatedFollowersCount = wasFollowing
             ? (user.followersCount - 1).clamp(0, 1 << 31)
             : user.followersCount + 1;
+        final isFollowingNow = !wasFollowing;
+        final followsOrPublic =
+            user.userPrivacy.publicSearch || isFollowingNow;
 
         value.data.user = user.copyWith(
-          isFollowing: !wasFollowing,
+          isFollowing: isFollowingNow,
+          canViewFollowers:
+              followsOrPublic && !user.userPrivacy.hideFollowers,
+          canViewFollowing:
+              followsOrPublic && !user.userPrivacy.hideFollowing,
+          canViewGallery: followsOrPublic,
           followersCount: updatedFollowersCount,
         );
         update();

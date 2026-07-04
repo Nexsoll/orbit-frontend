@@ -30,7 +30,7 @@ class _SocialExploreViewState extends State<SocialExploreView> {
   Future<void> _loadExploreData() async {
     setState(() => _isLoading = true);
     try {
-      final reelsFuture = _postApiService.getReels(page: 1, limit: 80);
+      final reelsFuture = _postApiService.getCachedReels(page: 1, limit: 80);
       final hashtagsFuture = _loadTopHashtags();
       final results = await Future.wait([reelsFuture, hashtagsFuture]);
 
@@ -64,7 +64,7 @@ class _SocialExploreViewState extends State<SocialExploreView> {
     var page = 1;
 
     while (page <= 5) {
-      final posts = await _postApiService.getPosts(page: page, limit: pageSize);
+      final posts = await _postApiService.getCachedPosts(page: page, limit: pageSize);
       if (posts.isEmpty) break;
 
       for (final post in posts) {

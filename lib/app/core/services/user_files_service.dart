@@ -43,6 +43,34 @@ class UserFilesService {
     }
   }
 
+  static Future<List<UserFileModel>> getPrivateMedia({
+    int page = 1,
+    int limit = 40,
+    String? fileType,
+  }) async {
+    try {
+      final response = await _api.getPrivateMedia(
+        page: page,
+        limit: limit,
+        fileType: fileType,
+      );
+
+      if (response.isSuccessful && response.body != null) {
+        final data = response.body as Map<String, dynamic>;
+        final filesData = data['data']['files'] as List<dynamic>;
+
+        return filesData
+            .map((fileJson) =>
+                UserFileModel.fromJson(fileJson as Map<String, dynamic>))
+            .toList();
+      } else {
+        throw Exception('Failed to load private media: ${response.error}');
+      }
+    } catch (e) {
+      throw Exception('Error loading private media: $e');
+    }
+  }
+
   static Future<void> deleteFile(String fileId) async {
     try {
       // First get the file details to know which local file to delete
@@ -84,6 +112,32 @@ class UserFilesService {
       await _deleteLocalFiles(filesToDelete);
     } catch (e) {
       throw Exception('Error deleting files: $e');
+    }
+  }
+
+  static Future<void> deletePrivateMedia(String fileId) async {
+    try {
+      final response = await _api.deletePrivateMedia(fileId);
+
+      if (!response.isSuccessful) {
+        throw Exception('Failed to delete private media: ${response.error}');
+      }
+    } catch (e) {
+      throw Exception('Error deleting private media: $e');
+    }
+  }
+
+  static Future<void> deleteMultiplePrivateMedia(List<String> fileIds) async {
+    try {
+      final response = await _api.deleteMultiplePrivateMedia({
+        'fileIds': fileIds,
+      });
+
+      if (!response.isSuccessful) {
+        throw Exception('Failed to delete private media: ${response.error}');
+      }
+    } catch (e) {
+      throw Exception('Error deleting private media: $e');
     }
   }
 
@@ -154,6 +208,42 @@ class UserFilesService {
       return uploadedFiles;
     } catch (e) {
       throw Exception('Error uploading files: $e');
+    }
+  }
+
+  static Future<List<UserFileModel>> uploadPrivateMedia(
+      List<VPlatformFile> files) async {
+    try {
+      final uploadedFiles = <UserFileModel>[];
+
+      for (final file in files) {
+        final multipartFile = await VPlatforms.getMultipartFile(source: file);
+        final response = await _api.uploadPrivateMedia(multipartFile);
+
+        if (response.isSuccessful && response.body != null) {
+          final data = response.body as Map<String, dynamic>;
+          final uploadedFilesData = data['data']?['uploadedFiles'];
+
+          if (uploadedFilesData != null && uploadedFilesData is List) {
+            uploadedFiles.addAll(
+              uploadedFilesData.map(
+                (fileJson) => UserFileModel.fromJson(
+                  fileJson as Map<String, dynamic>,
+                ),
+              ),
+            );
+          } else if (data['data']?['error'] != null) {
+            throw Exception('Upload failed: ${data['data']['error']}');
+          }
+        } else {
+          throw Exception(
+              'Failed to upload private media ${file.name}: ${response.error}');
+        }
+      }
+
+      return uploadedFiles;
+    } catch (e) {
+      throw Exception('Error uploading private media: $e');
     }
   }
 

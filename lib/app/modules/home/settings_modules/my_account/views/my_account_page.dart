@@ -63,7 +63,7 @@ class _MyAccountPageState extends State<MyAccountPage> {
                           S.of(context).updateYourProfile,
                           style: TextStyle(
                             fontSize: 16,
-                            color: Colors.black,
+                            color: CupertinoColors.label.resolveFrom(context),
                             fontWeight: FontWeight.w700,
                           ),
                           maxLines: 2,
@@ -108,7 +108,7 @@ class _MyAccountPageState extends State<MyAccountPage> {
                       .email
                       .toUpperCase()
                       .text
-                      .color(Colors.black)
+                      .color(CupertinoColors.label.resolveFrom(context))
                       .size(15),
                 ),
                 ChatSettingsTileInfo(
@@ -125,7 +125,7 @@ class _MyAccountPageState extends State<MyAccountPage> {
                   child: "PHONE NUMBER"
                       .toUpperCase()
                       .text
-                      .color(Colors.black)
+                      .color(CupertinoColors.label.resolveFrom(context))
                       .size(15),
                 ),
                 ChatSettingsTileInfo(
@@ -143,7 +143,7 @@ class _MyAccountPageState extends State<MyAccountPage> {
                   child: "GENDER"
                       .toUpperCase()
                       .text
-                      .color(Colors.black)
+                      .color(CupertinoColors.label.resolveFrom(context))
                       .size(15),
                 ),
                 ChatSettingsTileInfo(
@@ -161,7 +161,7 @@ class _MyAccountPageState extends State<MyAccountPage> {
                   child: "PROFESSION"
                       .toUpperCase()
                       .text
-                      .color(Colors.black)
+                      .color(CupertinoColors.label.resolveFrom(context))
                       .size(15),
                 ),
                 ChatSettingsTileInfo(
@@ -176,12 +176,30 @@ class _MyAccountPageState extends State<MyAccountPage> {
                 ),
                 Padding(
                   padding: const EdgeInsets.only(left: 30),
+                  child: "DATE OF BIRTH"
+                      .toUpperCase()
+                      .text
+                      .color(CupertinoColors.label.resolveFrom(context))
+                      .size(15),
+                ),
+                ChatSettingsTileInfo(
+                  tileBackgroundColor: Colors.grey.shade300,
+                  title: Text(_getDateOfBirthDisplayText()),
+                  padding: const EdgeInsets.all(10),
+                  trailing: const Icon(Icons.edit, color: Color(0xFFB48648)),
+                  onPressed: () => controller.updateDateOfBirth(context),
+                ),
+                const SizedBox(
+                  height: 15,
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(left: 30),
                   child: S
                       .of(context)
                       .about
                       .toUpperCase()
                       .text
-                      .color(Colors.black)
+                      .color(CupertinoColors.label.resolveFrom(context))
                       .size(15),
                 ),
                 ChatSettingsTileInfo(
@@ -204,7 +222,7 @@ class _MyAccountPageState extends State<MyAccountPage> {
                       .password
                       .toUpperCase()
                       .text
-                      .color(Colors.black)
+                      .color(CupertinoColors.label.resolveFrom(context))
                       .size(15),
                 ),
                 ChatSettingsTileInfo(
@@ -258,5 +276,19 @@ class _MyAccountPageState extends State<MyAccountPage> {
     }
     // Capitalize first letter
     return gender[0].toUpperCase() + gender.substring(1);
+  }
+
+  String _getDateOfBirthDisplayText() {
+    final value = AppAuth.myProfile.dateOfBirth;
+    if (value == null || value.isEmpty) {
+      return "Not set";
+    }
+    final parsed = DateTime.tryParse(value);
+    if (parsed == null) {
+      return value;
+    }
+    final month = parsed.month.toString().padLeft(2, '0');
+    final day = parsed.day.toString().padLeft(2, '0');
+    return '${parsed.year}-$month-$day';
   }
 }

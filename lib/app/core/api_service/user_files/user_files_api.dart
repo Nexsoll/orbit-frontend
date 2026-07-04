@@ -23,11 +23,26 @@ abstract class UserFilesApi extends ChopperService {
     @Query('fileType') String? fileType,
   });
 
+  @GET(path: '/private-media')
+  Future<Response> getPrivateMedia({
+    @Query('page') int? page,
+    @Query('limit') int? limit,
+    @Query('fileType') String? fileType,
+  });
+
   @DELETE(path: '/{fileId}')
   Future<Response> deleteFile(@Path('fileId') String fileId);
 
+  @DELETE(path: '/private-media/{fileId}')
+  Future<Response> deletePrivateMedia(@Path('fileId') String fileId);
+
   @DELETE()
   Future<Response> deleteMultipleFiles(@Body() Map<String, dynamic> body);
+
+  @DELETE(path: '/private-media')
+  Future<Response> deleteMultiplePrivateMedia(
+    @Body() Map<String, dynamic> body,
+  );
 
   @POST(path: '/cleanup')
   Future<Response> cleanupOrphanedFiles();
@@ -35,6 +50,10 @@ abstract class UserFilesApi extends ChopperService {
   @POST(path: '/upload')
   @multipart
   Future<Response> uploadFiles(@PartFile("file") MultipartFile file);
+
+  @POST(path: '/private-media/upload')
+  @multipart
+  Future<Response> uploadPrivateMedia(@PartFile("file") MultipartFile file);
 
   @POST(path: '/test')
   Future<Response> testEndpoint(@Body() Map<String, dynamic> body);

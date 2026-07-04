@@ -83,11 +83,151 @@ class _LoginViewState extends State<LoginView> {
                     height: context.height * .02,
                   ),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-
+                        Center(
+                          child: SocialLoginButtons(
+                            authService: GetIt.I.get<AuthApiService>(),
+                            profileService: GetIt.I.get<ProfileApiService>(),
+                            isAddingAccount: widget.showBackButton,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        Row(
+                          children: [
+                            Expanded(child: Divider(color: Colors.grey.shade400)),
+                            const SizedBox(width: 10),
+                            Text(
+                              'Or continue with',
+                              style: TextStyle(
+                                color: Colors.grey.shade600,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(child: Divider(color: Colors.grey.shade400)),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+                        // Modern Tab Bar
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      _loginMethod = RegisterMethod.email;
+                                      controller.emailController.clear();
+                                    });
+                                  },
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 250),
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    decoration: BoxDecoration(
+                                      color: _loginMethod == RegisterMethod.email
+                                          ? const Color(0xFFB48648)
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(16),
+                                      boxShadow: _loginMethod == RegisterMethod.email
+                                          ? [
+                                              BoxShadow(
+                                                color: const Color(0xFFB48648).withOpacity(0.3),
+                                                blurRadius: 8,
+                                                offset: const Offset(0, 4),
+                                              )
+                                            ]
+                                          : [],
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.email_outlined,
+                                          size: 18,
+                                          color: _loginMethod == RegisterMethod.email
+                                              ? Colors.white
+                                              : Colors.grey[700],
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          S.of(context).email,
+                                          style: TextStyle(
+                                            color: _loginMethod == RegisterMethod.email
+                                                ? Colors.white
+                                                : Colors.grey[700],
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      _loginMethod = RegisterMethod.phone;
+                                      controller.emailController.clear();
+                                    });
+                                  },
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 250),
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    decoration: BoxDecoration(
+                                      color: _loginMethod == RegisterMethod.phone
+                                          ? const Color(0xFFB48648)
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(16),
+                                      boxShadow: _loginMethod == RegisterMethod.phone
+                                          ? [
+                                              BoxShadow(
+                                                color: const Color(0xFFB48648).withOpacity(0.3),
+                                                blurRadius: 8,
+                                                offset: const Offset(0, 4),
+                                              )
+                                            ]
+                                          : [],
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          CupertinoIcons.phone,
+                                          size: 18,
+                                          color: _loginMethod == RegisterMethod.phone
+                                              ? Colors.white
+                                              : Colors.grey[700],
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'Phone',
+                                          style: TextStyle(
+                                            color: _loginMethod == RegisterMethod.phone
+                                                ? Colors.white
+                                                : Colors.grey[700],
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
                         STextFiled(
                           controller: controller.emailController,
                           textHint: _loginMethod == RegisterMethod.phone
@@ -101,52 +241,7 @@ class _LoginViewState extends State<LoginView> {
                               ? TextInputType.phone
                               : TextInputType.emailAddress,
                         ),
-                        const SizedBox(height: 8),
-                        // Toggle between email and phone login
-                        Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: () {
-                              setState(() {
-                                _loginMethod = _loginMethod == RegisterMethod.email
-                                    ? RegisterMethod.phone
-                                    : RegisterMethod.email;
-                                controller.emailController.clear();
-                              });
-                            },
-                            borderRadius: BorderRadius.circular(20),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    _loginMethod == RegisterMethod.email
-                                        ? CupertinoIcons.phone
-                                        : Icons.email_outlined,
-                                    size: 16,
-                                    color: const Color(0xFFB48648),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    _loginMethod == RegisterMethod.email
-                                        ? 'Use phone number instead'
-                                        : 'Use email instead',
-                                    style: const TextStyle(
-                                      color: Color(0xFFB48648),
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(
-                          height: 20,
-                        ),
+                        const SizedBox(height: 16),
                         STextFiled(
                           autocorrect: false,
                           controller: controller.passwordController,
@@ -209,37 +304,6 @@ class _LoginViewState extends State<LoginView> {
                             context,
                             method: _loginMethod,
                           ),
-                        ),
-                        const SizedBox(
-                          height: 30,
-                        ),
-                        Row(
-                          children: const [
-                            Expanded(
-                              child: Divider(
-                                color: Colors.black,
-                              ),
-                            ),
-                            SizedBox(width: 10),
-                            Text('Or login with', style: TextStyle(color: Colors.black)),
-                            SizedBox(width: 10),
-                            Expanded(
-                              child: Divider(
-                                color: Colors.black,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 15),
-                        Center(
-                          child: SocialLoginButtons(
-                            authService: GetIt.I.get<AuthApiService>(),
-                            profileService: GetIt.I.get<ProfileApiService>(),
-                            isAddingAccount: widget.showBackButton,
-                          ),
-                        ),
-                        const SizedBox(
-                          height: 15,
                         ),
                         const SizedBox(
                           height: 15,

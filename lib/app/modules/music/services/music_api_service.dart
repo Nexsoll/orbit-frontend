@@ -54,7 +54,8 @@ class MusicApiService {
           'category': category,
         if (mediaType != null && mediaType.isNotEmpty && mediaType != 'all')
           'mediaType': mediaType,
-        if (uploaderId != null && uploaderId.isNotEmpty) 'uploaderId': uploaderId,
+        if (uploaderId != null && uploaderId.isNotEmpty)
+          'uploaderId': uploaderId,
       },
     );
 
@@ -64,7 +65,9 @@ class MusicApiService {
     final data = body['data'];
     if (data is Map) {
       return {
-        'docs': data['docs'] is List ? List<Map<String, dynamic>>.from(data['docs']) : <Map<String, dynamic>>[],
+        'docs': data['docs'] is List
+            ? List<Map<String, dynamic>>.from(data['docs'])
+            : <Map<String, dynamic>>[],
         'total': data['total'] ?? 0,
         'page': data['page'] ?? page,
         'limit': data['limit'] ?? limit,
@@ -192,7 +195,9 @@ class MusicApiService {
     final data = body['data'];
     if (data is Map) {
       return {
-        'docs': data['docs'] is List ? List<Map<String, dynamic>>.from(data['docs']) : <Map<String, dynamic>>[],
+        'docs': data['docs'] is List
+            ? List<Map<String, dynamic>>.from(data['docs'])
+            : <Map<String, dynamic>>[],
         'total': data['total'] ?? 0,
         'page': data['page'] ?? page,
         'limit': data['limit'] ?? limit,
@@ -290,6 +295,49 @@ class MusicApiService {
     return <String, dynamic>{};
   }
 
+  Future<Map<String, dynamic>> generateSubtitles({
+    required String musicId,
+    bool force = false,
+    Duration? position,
+  }) async {
+    final uri = _base.replace(
+      path: _joinPath(_base.path, 'music/$musicId/subtitles'),
+    );
+    final res = await _client.post(
+      uri,
+      headers: _headers(),
+      body: jsonEncode({
+        if (force) 'force': true,
+        if (position != null) 'positionMs': position.inMilliseconds,
+      }),
+    );
+    _throwIfBad(res);
+    final body = jsonDecode(res.body);
+    final data = body['data'];
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    return <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> getSubtitles({
+    required String musicId,
+    Duration? position,
+  }) async {
+    final uri = _base.replace(
+      path: _joinPath(_base.path, 'music/$musicId/subtitles'),
+      queryParameters: {
+        if (position != null) 'positionMs': '${position.inMilliseconds}',
+      },
+    );
+    final res = await _client.get(uri, headers: _headers());
+    _throwIfBad(res);
+    final body = jsonDecode(res.body);
+    final data = body['data'];
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    return <String, dynamic>{};
+  }
+
   Future<List<Map<String, dynamic>>> getArtists() async {
     final uri = _base.replace(
       path: _joinPath(_base.path, 'music/artists'),
@@ -312,9 +360,9 @@ class MusicApiService {
       String? msg;
       if (body is Map) {
         msg = body['message']?.toString() ??
-              body['data']?.toString() ??
-              body['error']?.toString() ??
-              body['msg']?.toString();
+            body['data']?.toString() ??
+            body['error']?.toString() ??
+            body['msg']?.toString();
       }
       msg ??= 'Request failed (${res.statusCode})';
       throw SuperHttpBadRequest(exception: msg);

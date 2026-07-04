@@ -15,12 +15,32 @@ import 'package:super_up/app/modules/social/controllers/social_story_tab_control
 import 'package:super_up/app/modules/post/post_caption_text.dart';
 import 'package:super_up/app/modules/post/post_comment_sheet.dart';
 import 'package:super_up/app/modules/post/services/post_saved_posts_service.dart';
+import 'package:super_up/app/modules/story/story_subscription/story_subscription_helper.dart';
 import 'package:super_up_core/super_up_core.dart';
 import 'package:super_up/app/widgets/custom_circle_avatar.dart';
 import 'package:v_chat_sdk_core/v_chat_sdk_core.dart';
 import 'package:video_player/video_player.dart';
 import 'package:super_up/app/modules/post/post_photo_delete_screen.dart';
 
+Widget _buildAspectPreservingVideo(VideoPlayerController controller) {
+  final size = controller.value.size;
+  final aspectRatio = controller.value.aspectRatio;
+  final width = size.width > 0 ? size.width : 9.0;
+  final height = size.height > 0
+      ? size.height
+      : width / (aspectRatio > 0 ? aspectRatio : 9 / 16);
+
+  return Center(
+    child: FittedBox(
+      fit: BoxFit.contain,
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: VideoPlayer(controller),
+      ),
+    ),
+  );
+}
 
 class PostFeedWidget extends StatefulWidget {
   final PostModel post;
@@ -167,10 +187,8 @@ class _PostFeedWidgetState extends State<PostFeedWidget> {
     List<String> urls, {
     int initialIndex = 0,
   }) async {
-    final normalized = urls
-        .map(_resolveMediaUrl)
-        .where((e) => e.isNotEmpty)
-        .toList();
+    final normalized =
+        urls.map(_resolveMediaUrl).where((e) => e.isNotEmpty).toList();
     if (normalized.isEmpty) return;
 
     await Navigator.of(context).push(
@@ -381,13 +399,13 @@ class _PostFeedWidgetState extends State<PostFeedWidget> {
       if (roomsIds == null || roomsIds.isEmpty) return;
 
       final post = widget.post;
-      final isVideoPost = post.postType == PostType.video ||
-          post.postType == PostType.reel;
+      final isVideoPost =
+          post.postType == PostType.video || post.postType == PostType.reel;
       final rawMedia = post.mediaUrls.isNotEmpty
           ? post.mediaUrls.first
           : (post.media?.url ?? '');
 
-        String _deriveCloudinaryThumb(String url) {
+      String _deriveCloudinaryThumb(String url) {
         if (url.isEmpty || !url.startsWith('http')) return '';
         final uri = Uri.tryParse(url);
         if (uri == null || !uri.host.contains('res.cloudinary.com')) return '';
@@ -395,17 +413,21 @@ class _PostFeedWidgetState extends State<PostFeedWidget> {
         const upload = '/upload/';
         final idx = path.indexOf(upload);
         if (idx == -1) return '';
-        final prefix = '${uri.scheme}://${uri.host}${path.substring(0, idx + upload.length)}';
-        final tail = path.substring(idx + upload.length).replaceFirst(RegExp(r'^/+'), '');
+        final prefix =
+            '${uri.scheme}://${uri.host}${path.substring(0, idx + upload.length)}';
+        final tail = path
+            .substring(idx + upload.length)
+            .replaceFirst(RegExp(r'^/+'), '');
         final jpgTail = tail.replaceFirst(RegExp(r'\.[^./]+$'), '.jpg');
         return '${prefix}so_1,w_640,h_360,c_fill,f_jpg/$jpgTail';
-        }
+      }
 
-      String _full(String raw) =>
-          raw.isEmpty ? raw : (raw.startsWith('http') ? raw : '${SConstants.baseMediaUrl}$raw');
+      String _full(String raw) => raw.isEmpty
+          ? raw
+          : (raw.startsWith('http') ? raw : '${SConstants.baseMediaUrl}$raw');
       final mediaUrl = _full(rawMedia);
-        // Use explicit thumbnail first, then derive from Cloudinary video URL when missing.
-        final rawThumb = isVideoPost
+      // Use explicit thumbnail first, then derive from Cloudinary video URL when missing.
+      final rawThumb = isVideoPost
           ? (post.media?.thumbnail ?? _deriveCloudinaryThumb(mediaUrl))
           : (post.media?.thumbnail ?? rawMedia);
       final thumb = _full(rawThumb);
@@ -484,8 +506,8 @@ class _PostFeedWidgetState extends State<PostFeedWidget> {
     final post = widget.post;
 
     // Determine what media to use
-    final isVideoPost = post.postType == PostType.video ||
-        post.postType == PostType.reel;
+    final isVideoPost =
+        post.postType == PostType.video || post.postType == PostType.reel;
 
     String _deriveCloudinaryThumb(String url) {
       if (url.isEmpty || !url.startsWith('http')) return '';
@@ -495,8 +517,10 @@ class _PostFeedWidgetState extends State<PostFeedWidget> {
       const upload = '/upload/';
       final idx = path.indexOf(upload);
       if (idx == -1) return '';
-      final prefix = '${uri.scheme}://${uri.host}${path.substring(0, idx + upload.length)}';
-      final tail = path.substring(idx + upload.length).replaceFirst(RegExp(r'^/+'), '');
+      final prefix =
+          '${uri.scheme}://${uri.host}${path.substring(0, idx + upload.length)}';
+      final tail =
+          path.substring(idx + upload.length).replaceFirst(RegExp(r'^/+'), '');
       final jpgTail = tail.replaceFirst(RegExp(r'\.[^./]+$'), '.jpg');
       return '${prefix}so_1,w_640,h_360,c_fill,f_jpg/$jpgTail';
     }
@@ -505,14 +529,15 @@ class _PostFeedWidgetState extends State<PostFeedWidget> {
     final rawMediaUrl = post.mediaUrls.isNotEmpty
         ? post.mediaUrls.first
         : (post.media?.url ?? '');
-    String _full(String raw) =>
-        raw.isEmpty ? raw : (raw.startsWith('http') ? raw : '${SConstants.baseMediaUrl}$raw');
+    String _full(String raw) => raw.isEmpty
+        ? raw
+        : (raw.startsWith('http') ? raw : '${SConstants.baseMediaUrl}$raw');
     final fullMediaUrl = _full(rawMediaUrl);
     final rawThumbUrl = isVideoPost
-      ? (post.media?.thumbnail ?? _deriveCloudinaryThumb(fullMediaUrl))
-      : (post.mediaUrls.isNotEmpty
-        ? post.mediaUrls.first
-        : (post.media?.url ?? ''));
+        ? (post.media?.thumbnail ?? _deriveCloudinaryThumb(fullMediaUrl))
+        : (post.mediaUrls.isNotEmpty
+            ? post.mediaUrls.first
+            : (post.media?.url ?? ''));
     final fullThumbUrl = _full(rawThumbUrl);
 
     // Always use a text story with black background; the post card overlay shows on top
@@ -586,11 +611,14 @@ class _PostFeedWidgetState extends State<PostFeedWidget> {
       if (mounted && count != null) setState(() => _sharesCount = count);
       VAppAlert.showSuccessSnackBar(
           context: context,
-          message: 'Shared to your ${source == 'social' ? 'Social' : 'Main'} Story');
+          message:
+              'Shared to your ${source == 'social' ? 'Social' : 'Main'} Story');
     } catch (e) {
       if (!mounted) return;
       Navigator.of(context).pop();
-      VAppAlert.showErrorSnackBar(context: context, message: e.toString());
+      final msg = e.toString();
+      if (StorySubscriptionHelper.openIfRequired(context, msg)) return;
+      VAppAlert.showErrorSnackBar(context: context, message: msg);
     } finally {
       if (mounted) setState(() => _isSharing = false);
     }
@@ -673,7 +701,8 @@ class _PostFeedWidgetState extends State<PostFeedWidget> {
                     value: 'delete_photos',
                     child: Row(
                       children: [
-                        Icon(Icons.photo_library_outlined, color: Colors.blue, size: 18),
+                        Icon(Icons.photo_library_outlined,
+                            color: Colors.blue, size: 18),
                         SizedBox(width: 8),
                         Text('Delete Selected Photos'),
                       ],
@@ -756,7 +785,8 @@ class _PostFeedWidgetState extends State<PostFeedWidget> {
     // Multi-photo: horizontal PageView with dot indicator
     return _MultiPhotoViewer(
       urls: resolvedUrls,
-      onTapIndex: (index) => _openFullscreenImages(resolvedUrls, initialIndex: index),
+      onTapIndex: (index) =>
+          _openFullscreenImages(resolvedUrls, initialIndex: index),
     );
   }
 
@@ -777,7 +807,10 @@ class _PostFeedWidgetState extends State<PostFeedWidget> {
           AspectRatio(
             aspectRatio: _feedMediaAspectRatio,
             child: _isVideoInitialized
-                ? VideoPlayer(_videoController!)
+                ? Container(
+                    color: Colors.black,
+                    child: _buildAspectPreservingVideo(_videoController!),
+                  )
                 : Stack(
                     fit: StackFit.expand,
                     children: [
@@ -785,7 +818,7 @@ class _PostFeedWidgetState extends State<PostFeedWidget> {
                       if (thumbUrl.isNotEmpty)
                         CachedNetworkImage(
                           imageUrl: thumbUrl,
-                          fit: BoxFit.cover,
+                          fit: BoxFit.contain,
                           placeholder: (_, __) => Container(
                             color: Colors.black,
                           ),
@@ -1055,17 +1088,19 @@ class _MultiPhotoViewerState extends State<_MultiPhotoViewer> {
             padding: const EdgeInsets.only(bottom: 8),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(widget.urls.length, (i) => Container(
-                width: _current == i ? 16 : 6,
-                height: 6,
-                margin: const EdgeInsets.symmetric(horizontal: 2),
-                decoration: BoxDecoration(
-                  color: _current == i
-                      ? Colors.white
-                      : Colors.white.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              )),
+              children: List.generate(
+                  widget.urls.length,
+                  (i) => Container(
+                        width: _current == i ? 16 : 6,
+                        height: 6,
+                        margin: const EdgeInsets.symmetric(horizontal: 2),
+                        decoration: BoxDecoration(
+                          color: _current == i
+                              ? Colors.white
+                              : Colors.white.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      )),
             ),
           ),
         // Photo count badge top-right
@@ -1102,7 +1137,8 @@ class _FullScreenImageGallery extends StatefulWidget {
   });
 
   @override
-  State<_FullScreenImageGallery> createState() => _FullScreenImageGalleryState();
+  State<_FullScreenImageGallery> createState() =>
+      _FullScreenImageGalleryState();
 }
 
 class _FullScreenImageGalleryState extends State<_FullScreenImageGallery> {
@@ -1165,7 +1201,8 @@ class _FullScreenImageGalleryState extends State<_FullScreenImageGallery> {
                 top: 14,
                 right: 16,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
                     color: Colors.black.withOpacity(0.5),
                     borderRadius: BorderRadius.circular(12),
@@ -1249,16 +1286,16 @@ class _FullScreenVideoPageState extends State<_FullScreenVideoPage> {
       body: SafeArea(
         child: Stack(
           children: [
-            Center(
+            Positioned.fill(
               child: !_initialized || _controller == null
-                  ? const CupertinoActivityIndicator(color: Colors.white)
+                  ? const Center(
+                      child: CupertinoActivityIndicator(color: Colors.white),
+                    )
                   : GestureDetector(
                       onTap: _toggle,
-                      child: AspectRatio(
-                        aspectRatio: _controller!.value.aspectRatio == 0
-                            ? 16 / 9
-                            : _controller!.value.aspectRatio,
-                        child: VideoPlayer(_controller!),
+                      child: Container(
+                        color: Colors.black,
+                        child: _buildAspectPreservingVideo(_controller!),
                       ),
                     ),
             ),

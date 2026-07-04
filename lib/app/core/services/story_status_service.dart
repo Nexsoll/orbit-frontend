@@ -97,7 +97,7 @@ class StoryStatusService {
   /// Start periodic refresh of story and live status
   void _startPeriodicRefresh() {
     _refreshTimer?.cancel();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 60), (timer) {
       if (!_hasAuthToken()) {
         return;
       }

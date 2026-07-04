@@ -1,9 +1,9 @@
 name: super_up
-version: 1.8.0+101
+version: 1.8.4+115
 publish_to: none
 description: Orbit app is social media chat system whats app clone
 environment:
-  sdk: '>=3.0.5 <4.0.0'
+  sdk: ">=3.0.5 <4.0.0"
 
 dependencies:
   yaml: ^3.1.2
@@ -19,8 +19,8 @@ dependencies:
     path: ../../packages/v_chat_room_page
   v_chat_media_editor:
     path: ../../packages/v_chat_media_editor
-#  v_chat_one_signal:
-#    path: ../../packages/v_chat_one_signal
+  #  v_chat_one_signal:
+  #    path: ../../packages/v_chat_one_signal
   v_chat_firebase_fcm:
     path: ../../packages/v_chat_firebase_fcm
   v_chat_receive_share:
@@ -89,6 +89,7 @@ dependencies:
   permission_handler: ^11.3.1
   audio_service: ^0.18.18
   audio_session: ^0.2.2
+  just_audio: ^0.10.4
   file_picker: ^8.1.7
   encrypt: ^5.0.1
   in_app_purchase: ^3.2.3
@@ -103,12 +104,14 @@ dependencies:
   crop_your_image: ^2.0.0
   screen_protector: ^1.4.2
   wakelock_plus: ^1.2.8
+  flutter_screen_recording: ^2.0.25
+  gal: ^2.3.0
 
 dev_dependencies:
   flutter_lints: ^5.0.0
   build_runner: ^2.4.13
   chopper_generator: ^8.0.3
-#  msix: ^3.16.8
+  #  msix: ^3.16.8
   flutter_launcher_icons: ^0.14.1
 
 # Dependency override to fix iris_method_channel NDK compatibility issue

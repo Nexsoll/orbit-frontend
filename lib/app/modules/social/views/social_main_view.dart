@@ -1,7 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart' show Colors, Theme;
+import 'package:super_up/app/core/api_service/post/post_api_service.dart';
 import 'package:super_up_core/super_up_core.dart';
-import 'package:visibility_detector/visibility_detector.dart';
 
 import '../../live_stream/views/live_stream_options_view.dart';
 import '../../post/create_post_screen.dart';
@@ -20,7 +20,6 @@ class SocialMainView extends StatefulWidget {
 
 class _SocialMainViewState extends State<SocialMainView> {
   int _currentIndex = 0;
-  int _homeRefreshToken = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +36,7 @@ class _SocialMainViewState extends State<SocialMainView> {
             child: IndexedStack(
               index: _currentIndex,
               children: [
-                SocialHomeView(key: ValueKey(_homeRefreshToken)),
+                const SocialHomeView(),
                 const SocialSavedPostsView(),
                 ReelsScreen(key: const ValueKey('reels'), isActive: _currentIndex == 2),
                 const SocialFeaturedView(),
@@ -254,8 +253,8 @@ class _SocialMainViewState extends State<SocialMainView> {
     if (created == true && mounted) {
       setState(() {
         _currentIndex = 0;
-        _homeRefreshToken++;
       });
+      PostApiService.notifySocialFeedRefresh();
       VAppAlert.showSuccessSnackBar(
         context: context,
         message: 'Post published successfully',

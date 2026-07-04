@@ -3,6 +3,7 @@
 // MIT license that can be found in the LICENSE file.
 
 import 'package:flutter/foundation.dart';
+import 'dart:async';
 import 'package:super_up/app/core/api_service/story/story_api.dart';
 import 'package:super_up/app/core/models/story/create_story_dto.dart';
 import 'package:super_up/app/core/models/story/story_model.dart';
@@ -10,6 +11,7 @@ import 'package:super_up/app/core/models/story/story_reaction_model.dart';
 import 'package:super_up/app/core/models/story/story_reply_model.dart';
 import 'package:super_up/app/core/models/story/story_view_count_model.dart';
 import 'package:super_up/app/core/models/story/story_viewer_model.dart';
+import 'package:super_up/app/core/services/story_media_cache_service.dart';
 import 'package:super_up_core/super_up_core.dart';
 import 'package:v_platform/v_platform.dart';
 import 'package:chopper/chopper.dart';
@@ -69,9 +71,11 @@ class StoryApiService {
     debugPrint('getUsersStories queryParams: $queryParams');
     final res = await _storyApi!.getUsersStories(queryParams);
     throwIfNotSuccess(res);
-    return (extractDataFromResponse(res)['docs'] as List)
+    final stories = (extractDataFromResponse(res)['docs'] as List)
         .map((e) => UserStoryModel.fromMap(e))
         .toList();
+    unawaited(StoryMediaCacheService.I.prefetchStoryMedia(stories));
+    return stories;
   }
 
   Future<UserStoryModel?> getMyStories({String storySource = 'main'}) async {
@@ -81,7 +85,9 @@ class StoryApiService {
     throwIfNotSuccess(res);
     final l = extractDataFromResponse(res)['docs'] as List;
     if (l.isEmpty) return null;
-    return UserStoryModel.fromMap(l.first);
+    final mine = UserStoryModel.fromMap(l.first);
+    unawaited(StoryMediaCacheService.I.prefetchStoryMedia([mine]));
+    return mine;
   }
 
   Future<StoryReactionModel> reactToStory(String storyId,
@@ -124,9 +130,9 @@ class StoryApiService {
     Uri? baseUrl,
     String? accessToken,
   }) {
-    _storyApi ??= StoryApi.create(
+    _storyApi = StoryApi.create(
       accessToken: accessToken,
-      baseUrl: baseUrl ?? SConstants.sApiBaseUrl,
+      baseUrl: baseUrl ?? StoryApi.storyReelsServiceBaseUrl,
     );
     return StoryApiService._();
   }

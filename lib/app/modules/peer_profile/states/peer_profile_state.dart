@@ -37,6 +37,9 @@ class PeerProfileModel {
   final UserPrivacy userPrivacy;
   final List<MutualGroup> mutualGroups;
   final bool isFollowing;
+  final bool canViewFollowers;
+  final bool canViewFollowing;
+  final bool canViewGallery;
   final int followersCount;
   final int followingCount;
 
@@ -51,6 +54,9 @@ class PeerProfileModel {
     required this.roomId,
     required this.mutualGroups,
     required this.isFollowing,
+    required this.canViewFollowers,
+    required this.canViewFollowing,
+    required this.canViewGallery,
     required this.followersCount,
     required this.followingCount,
   });
@@ -67,6 +73,9 @@ class PeerProfileModel {
     String? roomId,
     List<MutualGroup>? mutualGroups,
     bool? isFollowing,
+    bool? canViewFollowers,
+    bool? canViewFollowing,
+    bool? canViewGallery,
     int? followersCount,
     int? followingCount,
   }) {
@@ -80,6 +89,9 @@ class PeerProfileModel {
       roomId: roomId ?? this.roomId,
       mutualGroups: mutualGroups ?? this.mutualGroups,
       isFollowing: isFollowing ?? this.isFollowing,
+      canViewFollowers: canViewFollowers ?? this.canViewFollowers,
+      canViewFollowing: canViewFollowing ?? this.canViewFollowing,
+      canViewGallery: canViewGallery ?? this.canViewGallery,
       followersCount: followersCount ?? this.followersCount,
       followingCount: followingCount ?? this.followingCount,
     );
@@ -99,6 +111,9 @@ class PeerProfileModel {
           .map((group) => MutualGroup.fromMap(group as Map<String, dynamic>))
           .toList(),
       isFollowing: map['isFollowing'] == true,
+      canViewFollowers: map['canViewFollowers'] != false,
+      canViewFollowing: map['canViewFollowing'] != false,
+      canViewGallery: map['canViewGallery'] != false,
       followersCount: (map['followersCount'] as num?)?.toInt() ?? 0,
       followingCount: (map['followingCount'] as num?)?.toInt() ?? 0,
     );

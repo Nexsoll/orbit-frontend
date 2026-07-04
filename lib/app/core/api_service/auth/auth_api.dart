@@ -16,6 +16,10 @@ part 'auth_api.chopper.dart';
 
 @ChopperApi(baseUrl: 'auth')
 abstract class AuthApi extends ChopperService {
+  static Uri get authServiceBaseUrl {
+    return SConstants.authApiBaseUrl;
+  }
+
   @Post(path: "/login")
   Future<Response> login(@Body() Map<String, dynamic> body);
 
@@ -46,6 +50,11 @@ abstract class AuthApi extends ChopperService {
   @Post(path: "/verify-and-reset-password")
   Future<Response> verifyAndResetPassword(@Body() Map<String, dynamic> body);
 
+  ///verify-otp-reset-password-only
+  @Post(path: "/verify-otp-reset-password-only")
+  Future<Response> verifyOtpResetPasswordOnly(
+      @Body() Map<String, dynamic> body);
+
   @Post(path: "/register")
   @multipart
   Future<Response> register(
@@ -72,7 +81,7 @@ abstract class AuthApi extends ChopperService {
     String? accessToken,
   }) {
     final client = ChopperClient(
-      baseUrl: SConstants.sApiBaseUrl,
+      baseUrl: baseUrl ?? authServiceBaseUrl,
       services: [
         _$AuthApi(),
       ],

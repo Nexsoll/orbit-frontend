@@ -17,6 +17,10 @@ part 'story_api.chopper.dart';
 
 @ChopperApi(baseUrl: 'user-story')
 abstract class StoryApi extends ChopperService {
+  static Uri get storyReelsServiceBaseUrl {
+    return SConstants.storyReelsApiBaseUrl;
+  }
+
   @Post(path: "/")
   @multipart
   Future<Response> createStory(
@@ -63,7 +67,7 @@ abstract class StoryApi extends ChopperService {
     String? accessToken,
   }) {
     final client = ChopperClient(
-      baseUrl: SConstants.sApiBaseUrl,
+      baseUrl: baseUrl ?? storyReelsServiceBaseUrl,
       services: [
         _$StoryApi(),
       ],

@@ -69,6 +69,7 @@ class DriverRequestsService {
 
   // Online drivers map
   final Map<String, DriverOnline> _onlineDrivers = {};
+  final Map<String, Timer> _presenceTimers = {};
 
   // Requests per driver
   final Map<String, List<RideRequestModel>> _requestsByDriver = {};
@@ -76,13 +77,25 @@ class DriverRequestsService {
   // Streams per driver
   final Map<String, StreamController<List<RideRequestModel>>> _controllers = {};
 
+  // Ignore list for accepted/declined requests to prevent redispatching loops
+  final Set<String> _ignoredRequestIds = {};
+
   Stream<List<RideRequestModel>> watchDriverRequests(String driverId) {
-    final ctrl = _controllers.putIfAbsent(
+    return _controllers.putIfAbsent(
       driverId,
       () => StreamController<List<RideRequestModel>>.broadcast(),
-    );
-    ctrl.add(List.unmodifiable(_requestsByDriver[driverId] ?? const []));
-    return ctrl.stream;
+    ).stream;
+  }
+
+  List<RideRequestModel> getDriverRequests(String driverId) {
+    return List.unmodifiable(_requestsByDriver[driverId] ?? const []);
+  }
+
+  void removeRequest({required String driverId, required String requestId}) {
+    final list = _requestsByDriver[driverId];
+    if (list == null) return;
+    list.removeWhere((r) => r.id == requestId);
+    _controllers[driverId]?.add(List.unmodifiable(list));
   }
 
   int get onlineCount => _onlineDrivers.length;
@@ -120,14 +133,18 @@ class DriverRequestsService {
       lng: lng,
       vehicleType: vType,
     );
-    // Notify backend presence (best-effort)
     try {
       await DriversApiService.presenceOnline(lat: lat, lng: lng, vehicleType: vType);
-    } catch (_) {}
+    } catch (_) {
+      _onlineDrivers.remove(driverId);
+      return false;
+    }
+    _startPresenceHeartbeat(driverId);
     return true;
   }
 
   void goOffline(String driverId) {
+    _presenceTimers.remove(driverId)?.cancel();
     _onlineDrivers.remove(driverId);
     // Keep requests list intact (driver can still see them); Alternatively clear:
     // _requestsByDriver.remove(driverId);
@@ -143,12 +160,24 @@ class DriverRequestsService {
       d.lat = pos.latitude;
       d.lng = pos.longitude;
       d.lastUpdated = DateTime.now();
+      await DriversApiService.presenceOnline(
+        lat: d.lat,
+        lng: d.lng,
+        vehicleType: d.vehicleType,
+      );
     }
+  }
+
+  void _startPresenceHeartbeat(String driverId) {
+    _presenceTimers.remove(driverId)?.cancel();
+    _presenceTimers[driverId] = Timer.periodic(const Duration(seconds: 60), (_) {
+      updateLocation(driverId).catchError((_) {});
+    });
   }
 
   int broadcastRideRequest({
     required RideRequestModel request,
-    double radiusKm = 5.0,
+    double radiusKm = 15.0,
   }) {
     int dispatched = 0;
     bool isBike(String s) => s.contains('bike') || s.contains('motor');
@@ -214,6 +243,7 @@ class DriverRequestsService {
 
   /// Ingest a real-time incoming request for a specific driver (from socket)
   void onIncomingRequest({required String driverId, required RideRequestModel request}) {
+    if (_ignoredRequestIds.contains(request.id)) return;
     final list = _requestsByDriver.putIfAbsent(driverId, () => <RideRequestModel>[]);
     final exists = list.any((r) => r.id == request.id);
     if (!exists) {
@@ -223,6 +253,7 @@ class DriverRequestsService {
   }
 
   void acceptRequest({required String driverId, required String requestId}) {
+    _ignoredRequestIds.add(requestId);
     // Remove this request from all other drivers (winner takes it)
     for (final k in _requestsByDriver.keys) {
       _requestsByDriver[k] = (_requestsByDriver[k] ?? [])
@@ -233,6 +264,7 @@ class DriverRequestsService {
   }
 
   void declineRequest({required String driverId, required String requestId}) {
+    _ignoredRequestIds.add(requestId);
     final list = _requestsByDriver[driverId];
     if (list == null) return;
     list.removeWhere((r) => r.id == requestId);

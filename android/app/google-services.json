@@ -12,7 +12,44 @@
           "package_name": "com.orbit.ke"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "507943861710-gmkh9gpsji2bt6v4uofe42nfkmbdjhhi.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.orbit.ke",
+            "certificate_hash": "e93d91328cc1249d9434897c874f6c0c38f5d87c"
+          }
+        },
+        {
+          "client_id": "507943861710-ih9bpovafiuqb9n7iau6h1qhnqmtcapc.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.orbit.ke",
+            "certificate_hash": "79a9c174beb8cc794dfbd3b2aef26047b7afcb87"
+          }
+        },
+        {
+          "client_id": "507943861710-mpj3onhl4br9qubj1slqnq5bm09ebkra.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.orbit.ke",
+            "certificate_hash": "fb0d753d593a7da85aded99a298553ac1eacf722"
+          }
+        },
+        {
+          "client_id": "507943861710-n26k8fevsbghivd7046lr7862iq3lpo7.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.orbit.ke",
+            "certificate_hash": "4b871bb5f3a8d07cd610644b8bf014f9030ff278"
+          }
+        },
+        {
+          "client_id": "507943861710-rs79p7ch2cu62qdvr8birf2o1uua4plp.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBajx0oj_JPE3hEZ4DvTh1PmZvRptUe0Xo"
@@ -20,7 +57,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "507943861710-rs79p7ch2cu62qdvr8birf2o1uua4plp.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "507943861710-0k5jn6cqsk3n8uim482lhfpt3ki05gg7.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.orbit.ke"
+              }
+            }
+          ]
         }
       }
     }

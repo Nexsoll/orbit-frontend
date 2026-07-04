@@ -49,6 +49,9 @@ abstract class ProfileApi extends ChopperService {
   @Patch(path: "/profession")
   Future<Response> updateUserProfession(@Body() Map<String, dynamic> body);
 
+  @Patch(path: "/date-of-birth")
+  Future<Response> updateDateOfBirth(@Body() Map<String, dynamic> body);
+
   /// update location
   @Patch(path: "/location")
   Future<Response> updateLocation(@Body() Map<String, dynamic> body);
@@ -164,7 +167,7 @@ abstract class ProfileApi extends ChopperService {
     String? accessToken,
   }) {
     final client = ChopperClient(
-      baseUrl: SConstants.sApiBaseUrl,
+      baseUrl: baseUrl ?? SConstants.sApiBaseUrl,
       services: [
         _$ProfileApi(),
       ],

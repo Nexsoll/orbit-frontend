@@ -14,7 +14,8 @@ class OpenAIService {
   factory OpenAIService() => _instance;
   OpenAIService._internal();
 
-  static const String _apiKey = "YOUR_OPENAI_API_KEY_HERE";
+  static const String _apiKey =
+      String.fromEnvironment('OPENAI_API_KEY');
 
   bool _isInitialized = false;
   bool _isWebSearchEnabled = true; // Enable web search by default
@@ -77,8 +78,8 @@ class OpenAIService {
       }
 
       // Check if API key is set
-      if (_apiKey == "YOUR_OPENAI_API_KEY_HERE") {
-        return "Please configure your OpenAI API key in the OpenAIService class.";
+      if (_apiKey.isEmpty || _apiKey == "YOUR_OPENAI_API_KEY_HERE") {
+        return "Please configure your OpenAI API key using --dart-define=OPENAI_API_KEY=your_key or in the OpenAIService class.";
       }
 
       // Use default roomId if not provided
@@ -505,7 +506,8 @@ class OpenAIService {
         if (output is! Map) continue;
 
         final type = output['type'];
-        if (type == 'image_generation_call' && output['status'] == 'completed') {
+        if (type == 'image_generation_call' &&
+            output['status'] == 'completed') {
           final result = output['result'];
           if (result is String && result.trim().isNotEmpty) {
             base64Out = result;
@@ -517,7 +519,8 @@ class OpenAIService {
           for (final c in (output['content'] as List)) {
             if (c is! Map) continue;
             if (c['type'] == 'output_image') {
-              final img = c['image_base64'] ?? c['base64'] ?? c['image'] ?? c['data'];
+              final img =
+                  c['image_base64'] ?? c['base64'] ?? c['image'] ?? c['data'];
               if (img is String && img.trim().isNotEmpty) {
                 base64Out = img;
                 break;

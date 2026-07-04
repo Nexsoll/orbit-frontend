@@ -10,9 +10,13 @@ import 'package:super_up/app/core/models/story/create_story_dto.dart';
 import 'package:super_up/app/core/utils/enums.dart';
 import 'package:super_up/app/core/services/story_status_service.dart';
 import 'package:super_up_core/super_up_core.dart';
+import 'package:just_audio/just_audio.dart';
 
+import '../widgets/story_music_selection_sheet.dart';
 import '../story_privacy/story_privacy_selection_screen.dart';
 import '../../../modules/social/controllers/social_story_tab_controller.dart';
+import '../widgets/status_ai_bottom_sheet.dart';
+import '../story_subscription/story_subscription_helper.dart';
 
 class _CreateStoryState {
   Color backgroundColor = const Color(0xFFA68888);
@@ -39,6 +43,9 @@ class _CreateTextStoryState extends State<CreateTextStory> {
   StoryPrivacy _storyPrivacy = StoryPrivacy.public;
   List<String>? _selectedUserIds;
   List<String>? _excludedUserIds;
+  
+  Map<String, dynamic>? _selectedBackgroundMusic;
+  AudioPlayer? _bgMusicPreviewPlayer;
 
   @override
   void initState() {
@@ -48,9 +55,55 @@ class _CreateTextStoryState extends State<CreateTextStory> {
 
   @override
   void dispose() {
-    super.dispose();
+    _bgMusicPreviewPlayer?.dispose();
     _focusNode.dispose();
     _txtController.dispose();
+    super.dispose();
+  }
+
+  void _playBackgroundMusicPreview() async {
+    await _bgMusicPreviewPlayer?.dispose();
+    _bgMusicPreviewPlayer = null;
+
+    if (_selectedBackgroundMusic == null || !mounted) return;
+
+    final rawUrl = _selectedBackgroundMusic!['musicUrl']?.toString() ?? '';
+    if (rawUrl.isEmpty) return;
+
+    final fullUrl = rawUrl.startsWith('http') ? rawUrl : SConstants.baseMediaUrl + rawUrl;
+    final startMs = _selectedBackgroundMusic!['startMs'] as int? ?? 0;
+    final endMs = _selectedBackgroundMusic!['endMs'] as int? ?? (startMs + 15000);
+
+    try {
+      _bgMusicPreviewPlayer = AudioPlayer();
+      await _bgMusicPreviewPlayer!.setUrl(fullUrl);
+      await _bgMusicPreviewPlayer!.seek(Duration(milliseconds: startMs));
+      await _bgMusicPreviewPlayer!.play();
+
+      _bgMusicPreviewPlayer!.positionStream.listen((pos) {
+        if (!mounted || _selectedBackgroundMusic == null || _bgMusicPreviewPlayer == null) return;
+        if (pos.inMilliseconds >= endMs) {
+          _bgMusicPreviewPlayer!.seek(Duration(milliseconds: startMs));
+        }
+      });
+    } catch (_) {}
+  }
+
+  void _stopBackgroundMusicPreview() async {
+    await _bgMusicPreviewPlayer?.dispose();
+    _bgMusicPreviewPlayer = null;
+  }
+
+  void _selectBackgroundMusic() {
+    StoryMusicSelectionSheet.show(
+      context: context,
+      onSelected: (trimmedData) {
+        setState(() {
+          _selectedBackgroundMusic = trimmedData;
+        });
+        _playBackgroundMusicPreview();
+      },
+    );
   }
 
   @override
@@ -96,6 +149,28 @@ class _CreateTextStoryState extends State<CreateTextStory> {
                       size: 30,
                     ),
                   ),
+                  const SizedBox(width: 10),
+                  InkWell(
+                    onTap: _showAiBottomSheet,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Row(
+                        children: [
+                          Image(
+                            image: AssetImage('assets/ai-logo.png'),
+                            width: 20,
+                            height: 20,
+                          ),
+                          SizedBox(width: 4),
+                          Text('AI', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -132,6 +207,53 @@ class _CreateTextStoryState extends State<CreateTextStory> {
                 ),
               ),
             ),
+            if (_selectedBackgroundMusic != null)
+              Container(
+                margin: const EdgeInsets.only(left: 16, right: 16, bottom: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.6),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFB48648), width: 1),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      CupertinoIcons.music_note_2,
+                      color: Color(0xFFB48648),
+                      size: 16,
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        '${_selectedBackgroundMusic!['title']} - ${_selectedBackgroundMusic!['artist']}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _selectedBackgroundMusic = null;
+                        });
+                        _stopBackgroundMusicPreview();
+                      },
+                      child: const Icon(
+                        CupertinoIcons.xmark_circle_fill,
+                        color: Colors.red,
+                        size: 18,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             Container(
               color: Colors.black.withOpacity(.5),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -163,7 +285,7 @@ class _CreateTextStoryState extends State<CreateTextStory> {
                           Icon(
                             _storyPrivacy == StoryPrivacy.public
                                 ? Icons.public
-                                : _storyPrivacy == StoryPrivacy.somePeople
+                               : _storyPrivacy == StoryPrivacy.somePeople
                                     ? Icons.people
                                     : Icons.people_alt_outlined,
                             color: Colors.white,
@@ -176,6 +298,41 @@ class _CreateTextStoryState extends State<CreateTextStory> {
                                 : _storyPrivacy == StoryPrivacy.somePeople
                                     ? 'Selected'
                                     : 'Except',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Music Button
+                  GestureDetector(
+                    onTap: _selectBackgroundMusic,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(20),
+                        color: _selectedBackgroundMusic != null
+                            ? const Color(0xFFB48648)
+                            : Colors.purple.withOpacity(0.7),
+                        border: Border.all(color: Colors.white, width: 1),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            CupertinoIcons.music_note_2,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _selectedBackgroundMusic != null ? 'Music' : 'Add Music',
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 12,
@@ -248,6 +405,23 @@ class _CreateTextStoryState extends State<CreateTextStory> {
     );
   }
 
+  void _showAiBottomSheet() {
+    StatusAiBottomSheet.show(
+      context,
+      storyType: StoryType.text,
+      initialText: _txtController.text.isNotEmpty ? _txtController.text : null,
+      onSuggestionSelected: (suggestion) {
+        setState(() {
+          if (_txtController.text.isNotEmpty) {
+            _txtController.text = '${_txtController.text} $suggestion';
+          } else {
+            _txtController.text = suggestion;
+          }
+        });
+      },
+    );
+  }
+
   void uploadTextStory() async {
     if (_txtController.text.isEmpty) return;
 
@@ -269,6 +443,9 @@ class _CreateTextStoryState extends State<CreateTextStory> {
           somePeople: _selectedUserIds,
           exceptPeople: _excludedUserIds,
           storySource: widget.storySource,
+          attachment: _selectedBackgroundMusic != null
+              ? {'backgroundMusic': _selectedBackgroundMusic}
+              : null,
         );
 
         // Debug: Print the DTO data
@@ -297,10 +474,9 @@ class _CreateTextStoryState extends State<CreateTextStory> {
       },
       onError: (exception, trace) {
         context.pop();
-        VAppAlert.showErrorSnackBar(
-          context: context,
-          message: exception.toString(),
-        );
+        final msg = exception.toString();
+        if (StorySubscriptionHelper.openIfRequired(context, msg)) return;
+        VAppAlert.showErrorSnackBar(context: context, message: msg);
       },
     );
   }

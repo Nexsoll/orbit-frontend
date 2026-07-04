@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_volume_controller/flutter_volume_controller.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:get_it/get_it.dart';
 import 'package:s_translation/generated/l10n.dart';
 import 'package:story_view/controller/story_controller.dart';
@@ -13,9 +15,11 @@ import 'package:super_up/app/core/models/story/story_model.dart';
 import 'package:super_up/app/core/models/story/story_reaction_model.dart';
 import 'package:super_up/app/core/models/story/story_reply_model.dart';
 import 'package:super_up/app/core/models/story/story_view_count_model.dart';
+import 'package:super_up/app/core/services/story_media_cache_service.dart';
 import 'package:flutter_parsed_text/flutter_parsed_text.dart';
 import 'package:super_up/app/modules/peer_profile/views/peer_profile_view.dart';
 import 'package:super_up/app/modules/post/post_feed_widget.dart';
+import 'package:super_up/app/modules/tickets/views/ticket_detail_view.dart';
 import 'package:super_up_core/super_up_core.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:v_chat_sdk_core/v_chat_sdk_core.dart';
@@ -50,6 +54,7 @@ class StoryViewpage extends StatefulWidget {
 
 class _StoryViewpageState extends State<StoryViewpage> {
   final controller = StoryController();
+  static const double _swipeVelocityThreshold = 350;
 
   late int _currentUserIndex;
   late UserStoryModel _currentStoryModel;
@@ -66,7 +71,12 @@ class _StoryViewpageState extends State<StoryViewpage> {
   bool _isReplying = false;
   bool _isTypingReply = false; // Track if user is typing a reply
   bool _isMuted = false; // Track mute state for video stories
+  bool _isCurrentVideoReady = false; // Hold story progress until video is ready
   double? _originalVolume; // Store original volume to restore later
+  Timer? _videoHoldPauseTicker;
+  
+  AudioPlayer? _bgMusicPlayer;
+  StreamSubscription? _bgMusicPositionSubscription;
 
   // Pinch-to-zoom state
   final _zoomController = TransformationController();
@@ -91,7 +101,9 @@ class _StoryViewpageState extends State<StoryViewpage> {
       final link = 'https://api.orbit.ke/api/v1/public/stories/share/$id';
 
       await Share.share(
-        uploaderName.isEmpty ? '$title\n$link' : '$title\nby $uploaderName\n$link',
+        uploaderName.isEmpty
+            ? '$title\n$link'
+            : '$title\nby $uploaderName\n$link',
         subject: title,
       );
     } catch (e) {
@@ -195,8 +207,7 @@ class _StoryViewpageState extends State<StoryViewpage> {
       if (mounted) WakelockPlus.enable();
     });
 
-    // Enable screenshot/screen recording protection for all stories during playback
-    unawaited(ScreenshotProtectionService.enableProtection());
+    unawaited(_syncScreenshotProtectionForCurrentUser());
 
     // Add listener to reply focus node to pause/resume story when clicking input field
     _replyFocusNode.addListener(_onReplyFocusChanged);
@@ -220,12 +231,21 @@ class _StoryViewpageState extends State<StoryViewpage> {
   String _storyPostId(StoryModel story) {
     final att = story.att;
     if (att == null) return '';
-    return (att['postId'] ?? att['post_id'] ?? att['postID'] ?? '')
-        .toString();
+    return (att['postId'] ?? att['post_id'] ?? att['postID'] ?? '').toString();
   }
 
   bool _isSharedPostStory(StoryModel story) {
     return _storyPostId(story).isNotEmpty;
+  }
+
+  String _storyTicketId(StoryModel story) {
+    final att = story.att;
+    if (att == null) return '';
+    return (att['ticketId'] ?? att['ticket_id'] ?? att['ticketID'] ?? '').toString();
+  }
+
+  bool _isSharedTicketStory(StoryModel story) {
+    return _storyTicketId(story).isNotEmpty;
   }
 
   String _postShareCaption(StoryModel story) {
@@ -338,20 +358,156 @@ class _StoryViewpageState extends State<StoryViewpage> {
         }
       });
     } catch (_) {
-      controller.play();
+      _playStoriesIfAllowed();
     }
+  }
+
+  void _startVideoHold() {
+    _videoHoldPauseTicker?.cancel();
+    _videoHoldPauseTicker =
+        Timer.periodic(const Duration(milliseconds: 120), (_) {
+      if (!mounted) return;
+      if (current.storyType != StoryType.video || _isCurrentVideoReady) {
+        _stopVideoHold();
+        return;
+      }
+      controller.pause();
+    });
+  }
+
+  void _stopVideoHold() {
+    _videoHoldPauseTicker?.cancel();
+    _videoHoldPauseTicker = null;
+  }
+
+  void _playStoriesIfAllowed() {
+    if (current.storyType == StoryType.video && !_isCurrentVideoReady) return;
+    controller.play();
+  }
+
+  Future<void> _syncScreenshotProtectionForCurrentUser() async {
+    final shouldProtect = !_currentStoryModel.userData.isMe &&
+        !_currentStoryModel.allowStoryScreenshot;
+
+    if (shouldProtect) {
+      await ScreenshotProtectionService.enableProtection();
+    } else {
+      await ScreenshotProtectionService.disableProtection();
+    }
+  }
+
+  void _switchToUserAt(int userIndex) {
+    if (_isPreparingStories) return;
+    if (userIndex < 0 || userIndex >= widget.userStoryModels.length) return;
+    if (userIndex == _currentUserIndex) return;
+
+    setState(() {
+      _currentUserIndex = userIndex;
+      _currentStoryModel = widget.userStoryModels[_currentUserIndex];
+      _isPreparingStories = true;
+    });
+    unawaited(_syncScreenshotProtectionForCurrentUser());
+    unawaited(_parseStories());
+  }
+
+  void _goToNextUserStory() {
+    _switchToUserAt(_currentUserIndex + 1);
+  }
+
+  void _goToPreviousUserStory() {
+    _switchToUserAt(_currentUserIndex - 1);
+  }
+
+  void _handleHorizontalSwipe(DragEndDetails details) {
+    if (_isPreparingStories) return;
+    final velocity = details.velocity.pixelsPerSecond.dx;
+
+    if (velocity <= -_swipeVelocityThreshold) {
+      _goToNextUserStory();
+      return;
+    }
+    if (velocity >= _swipeVelocityThreshold) {
+      _goToPreviousUserStory();
+    }
+  }
+
+  void _handleCurrentStoryChanged() {
+    if (current.storyType == StoryType.video) {
+      _isCurrentVideoReady = false;
+      controller.pause();
+      _startVideoHold();
+      return;
+    }
+    _stopVideoHold();
+    _isCurrentVideoReady = true;
   }
 
   String? _getCurrentVideoUrl() {
     try {
       final url = current.att?['url'];
       if (url == null) return null;
-      final raw = url.toString();
-      if (raw.isEmpty) return null;
-      return raw.startsWith('http') ? raw : '${SConstants.baseMediaUrl}$raw';
+      final full = StoryMediaCacheService.I.resolveStoryUrl(url.toString());
+      return full.isEmpty ? null : full;
     } catch (_) {
       return null;
     }
+  }
+
+  void _stopBgMusic() {
+    _bgMusicPositionSubscription?.cancel();
+    _bgMusicPositionSubscription = null;
+    _bgMusicPlayer?.stop();
+    _bgMusicPlayer?.dispose();
+    _bgMusicPlayer = null;
+  }
+
+  void _pauseBgMusic() {
+    _bgMusicPlayer?.pause();
+  }
+
+  void _resumeBgMusic() {
+    if (current.att?['backgroundMusic'] != null && 
+        !_replyFocusNode.hasFocus && 
+        !_isTypingReply && 
+        _currentZoom <= 1.0) {
+      _bgMusicPlayer?.play();
+    }
+  }
+
+  void _startBgMusicForCurrent() async {
+    _stopBgMusic();
+
+    final bgMusic = current.att?['backgroundMusic'];
+    if (bgMusic == null) return;
+
+    final rawUrl = bgMusic['musicUrl']?.toString() ?? '';
+    if (rawUrl.isEmpty) return;
+
+    final fullUrl = rawUrl.startsWith('http') ? rawUrl : SConstants.baseMediaUrl + rawUrl;
+    final startMs = bgMusic['startMs'] as int? ?? 0;
+    final endMs = bgMusic['endMs'] as int? ?? (startMs + 15000);
+
+    try {
+      _bgMusicPlayer = AudioPlayer();
+      if (_isMuted) {
+        await _bgMusicPlayer!.setVolume(0.0);
+      } else {
+        await _bgMusicPlayer!.setVolume(1.0);
+      }
+      await _bgMusicPlayer!.setUrl(fullUrl);
+      await _bgMusicPlayer!.seek(Duration(milliseconds: startMs));
+      
+      if (!_replyFocusNode.hasFocus && !_isTypingReply && _currentZoom <= 1.0) {
+        await _bgMusicPlayer!.play();
+      }
+
+      _bgMusicPositionSubscription = _bgMusicPlayer!.positionStream.listen((pos) {
+        if (!mounted || _bgMusicPlayer == null) return;
+        if (pos.inMilliseconds >= endMs) {
+          _bgMusicPlayer!.seek(Duration(milliseconds: startMs));
+        }
+      });
+    } catch (_) {}
   }
 
   @override
@@ -359,18 +515,21 @@ class _StoryViewpageState extends State<StoryViewpage> {
     // Disable wakelock when leaving story viewer
     WakelockPlus.disable();
 
+    _stopBgMusic();
+
     // Restore audio session if it was muted when leaving the story
     if (_isMuted) {
       _restoreAudio();
     }
     _voiceController?.dispose();
+    _stopVideoHold();
     // Pause the story controller to stop any playing video/audio before disposing
     controller.pause();
     controller.dispose();
     _replyController.dispose();
     _replyFocusNode.dispose();
     _zoomController.dispose();
-    // Disable screenshot/screen recording protection when leaving story viewer
+    // Restore screenshot/screen recording behavior when leaving story viewer.
     ScreenshotProtectionService.disableProtection();
     super.dispose();
   }
@@ -395,116 +554,200 @@ class _StoryViewpageState extends State<StoryViewpage> {
       resizeToAvoidBottomInset: true,
       backgroundColor: Colors.black,
       body: SafeArea(
-        child: Stack(
-          children: [
-            // Pinch-to-zoom wrapper for media stories
-            InteractiveViewer(
-              transformationController: _zoomController,
-              minScale: 1.0,
-              maxScale: 4.0,
-              onInteractionUpdate: (details) {
-                final newZoom = _zoomController.value.getMaxScaleOnAxis();
-                if (newZoom != _currentZoom) {
-                  setState(() {
-                    _currentZoom = newZoom;
-                  });
-                  // Pause story when zoomed in
-                  if (newZoom > 1.0) {
-                    controller.pause();
-                    if (current.storyType == StoryType.voice) {
-                      _voiceController?.pausePlaying();
-                    }
-                  } else {
-                    // Resume when zoom reset
-                    if (!_replyFocusNode.hasFocus) {
-                      controller.play();
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onHorizontalDragEnd: _handleHorizontalSwipe,
+          child: Stack(
+            children: [
+              // Pinch-to-zoom wrapper for media stories
+              InteractiveViewer(
+                transformationController: _zoomController,
+                minScale: 1.0,
+                maxScale: 4.0,
+                onInteractionUpdate: (details) {
+                  final newZoom = _zoomController.value.getMaxScaleOnAxis();
+                  if (newZoom != _currentZoom) {
+                    setState(() {
+                      _currentZoom = newZoom;
+                    });
+                    // Pause story when zoomed in
+                    if (newZoom > 1.0) {
+                      controller.pause();
+                      _pauseBgMusic();
+                      if (current.storyType == StoryType.voice) {
+                        _voiceController?.pausePlaying();
+                      }
+                    } else {
+                      // Resume when zoom reset
+                      if (!_replyFocusNode.hasFocus) {
+                        _resumeBgMusic();
+                        _playStoriesIfAllowed();
+                      }
                     }
                   }
-                }
-              },
-              child: KeyedSubtree(
-                key: ValueKey(_currentUserIndex),
-                child: StoryView(
-                  onComplete: () {
-                    if (_currentUserIndex < widget.userStoryModels.length - 1) {
-                      setState(() {
-                        _currentUserIndex++;
-                        _currentStoryModel =
-                            widget.userStoryModels[_currentUserIndex];
-                        _isPreparingStories = true;
-                      });
-                      _parseStories();
-                    } else {
-                      context.pop();
-                      widget.onComplete?.call(_currentStoryModel);
-                    }
-                  },
-                  onStoryShow: (storyItem, index) {
-                    // Ensure wakelock is enabled for every story shown
-                    WakelockPlus.enable();
-
-                    // Reset zoom when story changes
-                    if (_currentZoom > 1.0) {
-                      _zoomController.value = Matrix4.identity();
-                      _currentZoom = 1.0;
-                    }
-
-                    int pos = stories.indexOf(storyItem);
-                    current = _currentStoryModel.stories[pos];
-                    unawaited(_ensurePostCaptionLoaded(current));
-                    unawaited(_setSeen(current.id));
-                    // Reset mute state when story changes
-                    if (_isMuted) {
-                      _restoreAudio();
-                      _isMuted = false;
-                    }
-                    // Prepare voice playback when current is voice
-                    _setupVoiceForCurrent();
-                    // Notify the controller that this story was viewed using delayed call
-                    Future.delayed(Duration.zero, () {
-                      if (mounted) {
-                        // Load saved emoji reaction for this story
-                        setState(() {
-                          _selectedEmoji = _storyReactions[current.id];
-                        });
-                        widget.onStoryViewed?.call(current.id);
-                        // Load view count for own stories when story changes
-                        if (_currentStoryModel.userData.isMe) {
-                          _loadViewCount();
-                        }
-                        // Check for existing reaction
-                        _checkExistingReaction();
+                },
+                child: KeyedSubtree(
+                  key: ValueKey(_currentUserIndex),
+                  child: StoryView(
+                    onComplete: () {
+                      if (_currentUserIndex <
+                          widget.userStoryModels.length - 1) {
+                        _goToNextUserStory();
+                      } else {
+                        context.pop();
+                        widget.onComplete?.call(_currentStoryModel);
                       }
-                    });
-                  },
-                  storyItems: stories,
-                  controller: controller,
+                    },
+                    onStoryShow: (storyItem, index) {
+                      // Ensure wakelock is enabled for every story shown
+                      WakelockPlus.enable();
+
+                      // Reset zoom when story changes
+                      if (_currentZoom > 1.0) {
+                        _zoomController.value = Matrix4.identity();
+                        _currentZoom = 1.0;
+                      }
+
+                      int pos = stories.indexOf(storyItem);
+                      current = _currentStoryModel.stories[pos];
+                      _handleCurrentStoryChanged();
+                      unawaited(_ensurePostCaptionLoaded(current));
+                      unawaited(_setSeen(current.id));
+                      // Reset mute state when story changes
+                      if (_isMuted) {
+                        _restoreAudio();
+                        _isMuted = false;
+                      }
+                      // Prepare voice playback when current is voice
+                      _setupVoiceForCurrent();
+                      // Notify the controller that this story was viewed using delayed call
+                      Future.delayed(Duration.zero, () {
+                        if (mounted) {
+                          // Load saved emoji reaction for this story
+                          setState(() {
+                            _selectedEmoji = _storyReactions[current.id];
+                          });
+                          widget.onStoryViewed?.call(current.id);
+                          // Load view count for own stories when story changes
+                          if (_currentStoryModel.userData.isMe) {
+                            _loadViewCount();
+                          }
+                          // Check for existing reaction
+                          _checkExistingReaction();
+
+                          _startBgMusicForCurrent();
+                        }
+                      });
+                    },
+                    storyItems: stories,
+                    controller: controller,
+                  ),
                 ),
               ),
-            ),
-            // Clickable text story overlay: hide for shared-post stories
-            if (current.storyType == StoryType.text &&
-                !_isSharedPostStory(current))
-              Positioned.fill(
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 22),
-                    child: AutoDirection(
-                      text: current.content,
-                      child: ParsedText(
+              // Clickable text story overlay: hide for shared-post and shared-ticket stories
+              if (current.storyType == StoryType.text &&
+                  !_isSharedPostStory(current) &&
+                  !_isSharedTicketStory(current))
+                Positioned.fill(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 22),
+                      child: AutoDirection(
                         text: current.content,
-                        alignment: TextAlign.center,
-                        style: TextStyle(
+                        child: ParsedText(
+                          text: current.content,
+                          alignment: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 35,
+                            fontStyle: current.fontType == StoryFontType.italic
+                                ? FontStyle.italic
+                                : null,
+                            textBaseline: TextBaseline.alphabetic,
+                            fontWeight: current.fontType == StoryFontType.bold
+                                ? FontWeight.bold
+                                : null,
+                            shadows: const [
+                              Shadow(
+                                offset: Offset(1, 1),
+                                blurRadius: 3,
+                                color: Colors.black54,
+                              ),
+                            ],
+                          ),
+                          regexOptions:
+                              const RegexOptions(multiLine: true, dotAll: true),
+                          parse: [
+                            MatchText(
+                              pattern: r'((http|https):\/\/[^\s]+|www\.[^\s]+)',
+                              style: TextStyle(
+                                color: Colors.white,
+                                decoration: TextDecoration.underline,
+                                fontSize: 35,
+                                fontStyle:
+                                    current.fontType == StoryFontType.italic
+                                        ? FontStyle.italic
+                                        : null,
+                                fontWeight:
+                                    current.fontType == StoryFontType.bold
+                                        ? FontWeight.bold
+                                        : null,
+                                shadows: const [
+                                  Shadow(
+                                    offset: Offset(1, 1),
+                                    blurRadius: 3,
+                                    color: Colors.black54,
+                                  ),
+                                ],
+                              ),
+                              onTap: (url) async {
+                                if (!url.startsWith(protocolIdentifierRegex)) {
+                                  url = 'https://$url';
+                                }
+                                await VStringUtils.lunchLink(url);
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              // Custom caption overlay (hide it for shared-post/ticket stories to avoid duplicate text)
+              if (current.caption != null &&
+                  current.caption!.isNotEmpty &&
+                  !_isSharedPostStory(current) &&
+                  !_isSharedTicketStory(current))
+                Positioned(
+                  bottom: _currentStoryModel.userData.isMe
+                      ? 20 // Story owner: position at bottom of screen for better visibility
+                      : 80, // Story viewer: position above reply section (60px reply height + 20px gap)
+                  left: 20,
+                  right: 20,
+                  child: ParsedText(
+                    text: current.caption!,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      shadows: [
+                        Shadow(
+                          offset: Offset(1, 1),
+                          blurRadius: 3,
+                          color: Colors.black54,
+                        ),
+                      ],
+                    ),
+                    alignment: TextAlign.center,
+                    parse: [
+                      MatchText(
+                        pattern: r'((http|https):\/\/[^\s]+|www\.[^\s]+)',
+                        style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 35,
-                          fontStyle: current.fontType == StoryFontType.italic
-                              ? FontStyle.italic
-                              : null,
-                          textBaseline: TextBaseline.alphabetic,
-                          fontWeight: current.fontType == StoryFontType.bold
-                              ? FontWeight.bold
-                              : null,
-                          shadows: const [
+                          decoration: TextDecoration.underline,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          shadows: [
                             Shadow(
                               offset: Offset(1, 1),
                               blurRadius: 3,
@@ -512,307 +755,324 @@ class _StoryViewpageState extends State<StoryViewpage> {
                             ),
                           ],
                         ),
-                        regexOptions:
-                            const RegexOptions(multiLine: true, dotAll: true),
-                        parse: [
-                          MatchText(
-                            pattern: r'((http|https):\/\/[^\s]+|www\.[^\s]+)',
-                            style: TextStyle(
-                              color: Colors.white,
-                              decoration: TextDecoration.underline,
-                              fontSize: 35,
-                              fontStyle:
-                                  current.fontType == StoryFontType.italic
-                                      ? FontStyle.italic
-                                      : null,
-                              fontWeight: current.fontType == StoryFontType.bold
-                                  ? FontWeight.bold
-                                  : null,
-                              shadows: const [
-                                Shadow(
-                                  offset: Offset(1, 1),
-                                  blurRadius: 3,
-                                  color: Colors.black54,
+                        onTap: (url) async {
+                          final protocolIdentifierRegex = RegExp(
+                            r'^((http|ftp|https):\/\/)',
+                            caseSensitive: false,
+                          );
+                          if (!url.startsWith(protocolIdentifierRegex)) {
+                            url = 'https://$url';
+                          }
+                          await VStringUtils.lunchLink(url);
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              // Post card overlay for stories shared from a post
+              if (_isSharedPostStory(current))
+                Positioned(
+                  bottom: _currentStoryModel.userData.isMe ? 170 : 240,
+                  left: 16,
+                  right: 16,
+                  child: _StoryPostCard(
+                    att: current.att!,
+                    caption: _resolvedPostShareCaption(current),
+                    onTap: () async {
+                      final postId = _storyPostId(current);
+                      if (postId.isEmpty) return;
+                      controller.pause();
+                      _pauseBgMusic();
+                      VAppAlert.showLoading(context: context);
+                      try {
+                        final api = GetIt.I.get<PostApiService>();
+                        final post = await api.getPostById(postId);
+                        if (!mounted) return;
+                        Navigator.of(context).pop(); // dismiss loading
+                        await Navigator.of(context).push(
+                          CupertinoPageRoute(
+                            builder: (_) => CupertinoPageScaffold(
+                              navigationBar: const CupertinoNavigationBar(
+                                middle: Text('Post'),
+                              ),
+                              child: SafeArea(
+                                child: SingleChildScrollView(
+                                  child: PostFeedWidget(post: post),
                                 ),
-                              ],
+                              ),
                             ),
-                            onTap: (url) async {
-                              if (!url.startsWith(protocolIdentifierRegex)) {
-                                url = 'https://$url';
-                              }
-                              await VStringUtils.lunchLink(url);
-                            },
                           ),
-                        ],
+                        );
+                      } catch (_) {
+                        if (mounted) {
+                          Navigator.of(context).pop();
+                          VAppAlert.showErrorSnackBar(
+                              context: context, message: 'Could not load post');
+                        }
+                      }
+                      if (mounted) {
+                        _resumeBgMusic();
+                        _playStoriesIfAllowed();
+                      }
+                    },
+                  ),
+                ),
+              // Ticket card overlay for stories shared from a ticket
+              if (_isSharedTicketStory(current))
+                Positioned(
+                  bottom: _currentStoryModel.userData.isMe ? 220 : 290,
+                  left: 16,
+                  right: 16,
+                  child: _StoryTicketCard(
+                    att: current.att!,
+                    onTap: () async {
+                      final ticketId = _storyTicketId(current);
+                      if (ticketId.isEmpty) return;
+                      controller.pause();
+                      _pauseBgMusic();
+                      if (current.storyType == StoryType.voice) {
+                        _voiceController?.pausePlaying();
+                      }
+                      await Navigator.of(context).push(
+                        CupertinoPageRoute(
+                          builder: (_) => TicketDetailView(
+                            ticketId: ticketId,
+                            initialTicket: current.att!,
+                          ),
+                        ),
+                      );
+                      if (mounted) {
+                        _resumeBgMusic();
+                        _playStoriesIfAllowed();
+                      }
+                    },
+                  ),
+                ),
+              // Voice story player overlay (centered)
+              if (current.storyType == StoryType.voice &&
+                  _voiceController != null)
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: VVoiceMessageView(
+                      controller: _voiceController!,
+                    ),
+                  ),
+                ),
+              // Inline video player overlay (all platforms)
+              // Wrapped in IgnorePointer to allow tap-to-skip gestures to pass through to StoryView
+              if (current.storyType == StoryType.video &&
+                  _getCurrentVideoUrl() != null)
+                IgnorePointer(
+                  child: Center(
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: _InlineStoryVideoPlayer(
+                        key: ValueKey(current.id),
+                        url: _getCurrentVideoUrl()!,
+                        muted: _isMuted,
+                        onReady: () {
+                          if (!mounted) return;
+                          if (current.storyType != StoryType.video) return;
+                          if (_isCurrentVideoReady) return;
+                          setState(() {
+                            _isCurrentVideoReady = true;
+                          });
+                          _stopVideoHold();
+                          if (!_replyFocusNode.hasFocus &&
+                              _currentZoom <= 1.0) {
+                            _playStoriesIfAllowed();
+                          }
+                        },
                       ),
                     ),
                   ),
                 ),
-              ),
-            // Custom caption overlay (hide it for shared-post stories to avoid duplicate text)
-            if (current.caption != null &&
-                current.caption!.isNotEmpty &&
-                !_isSharedPostStory(current))
               Positioned(
-                bottom: _currentStoryModel.userData.isMe
-                    ? 20 // Story owner: position at bottom of screen for better visibility
-                    : 80, // Story viewer: position above reply section (60px reply height + 20px gap)
-                left: 20,
-                right: 20,
-                child: ParsedText(
-                  text: current.caption!,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    shadows: [
-                      Shadow(
-                        offset: Offset(1, 1),
-                        blurRadius: 3,
-                        color: Colors.black54,
-                      ),
-                    ],
-                  ),
-                  alignment: TextAlign.center,
-                  parse: [
-                    MatchText(
-                      pattern: r'((http|https):\/\/[^\s]+|www\.[^\s]+)',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        decoration: TextDecoration.underline,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        shadows: [
-                          Shadow(
-                            offset: Offset(1, 1),
-                            blurRadius: 3,
-                            color: Colors.black54,
-                          ),
-                        ],
-                      ),
-                      onTap: (url) async {
-                        final protocolIdentifierRegex = RegExp(
-                          r'^((http|ftp|https):\/\/)',
-                          caseSensitive: false,
-                        );
-                        if (!url.startsWith(protocolIdentifierRegex)) {
-                          url = 'https://$url';
-                        }
-                        await VStringUtils.lunchLink(url);
+                top: 25,
+                left: 10,
+                right: 50,
+                child: Row(
+                  children: [
+                    InkWell(
+                      onTap: () {
+                        context.pop();
                       },
+                      child: const Icon(
+                        Icons.arrow_back_ios,
+                        color: Colors.white,
+                      ),
+                    ),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () {
+                          if (_currentStoryModel.userData.isMe) return;
+                          context.toPage(
+                            PeerProfileView(
+                                peerId: _currentStoryModel.userData.id),
+                          );
+                        },
+                        child: Row(
+                          children: [
+                            const SizedBox(
+                              width: 10,
+                            ),
+                            VCircleAvatar(
+                              vFileSource: VPlatformFile.fromUrl(
+                                networkUrl: _currentStoryModel.userData.userImage,
+                              ),
+                              radius: 20,
+                            ),
+                            const SizedBox(
+                              width: 10,
+                            ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    _currentStoryModel.userData.fullName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const SizedBox(
+                                    height: 3,
+                                  ),
+                                  format(
+                                    DateTime.parse(current.createdAt),
+                                    locale: Localizations.localeOf(context)
+                                        .languageCode,
+                                  ).cap.color(Colors.white),
+                                  if (current.att?['backgroundMusic'] != null) ...[
+                                    const SizedBox(height: 3),
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.music_note,
+                                          color: Color(0xFFB48648),
+                                          size: 14,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Expanded(
+                                          child: Builder(
+                                            builder: (context) {
+                                              final bgm = current.att!['backgroundMusic'];
+                                              final title = bgm['title'] ?? 'Untitled';
+                                              final artist = bgm['artist'];
+                                              final text = (artist == null || artist == 'Unknown' || artist.toString().trim().isEmpty)
+                                                  ? '$title'
+                                                  : '$title - $artist';
+                                              return Text(
+                                                text,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              );
+                                            }
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            )
+                          ],
+                        ),
+                      ),
                     ),
                   ],
                 ),
               ),
-            // Post card overlay for stories shared from a post
-            if (_isSharedPostStory(current))
-              Positioned(
-                bottom: _currentStoryModel.userData.isMe ? 170 : 240,
-                left: 16,
-                right: 16,
-                child: _StoryPostCard(
-                  att: current.att!,
-                  caption: _resolvedPostShareCaption(current),
-                  onTap: () async {
-                    final postId = _storyPostId(current);
-                    if (postId.isEmpty) return;
-                    controller.pause();
-                    VAppAlert.showLoading(context: context);
-                    try {
-                      final api = GetIt.I.get<PostApiService>();
-                      final post = await api.getPostById(postId);
-                      if (!mounted) return;
-                      Navigator.of(context).pop(); // dismiss loading
-                      await Navigator.of(context).push(
-                        CupertinoPageRoute(
-                          builder: (_) => CupertinoPageScaffold(
-                            navigationBar: const CupertinoNavigationBar(
-                              middle: Text('Post'),
-                            ),
-                            child: SafeArea(
-                              child: SingleChildScrollView(
-                                child: PostFeedWidget(post: post),
-                              ),
-                            ),
+              // Show view count for own stories - positioned on left side
+              if (_currentStoryModel.userData.isMe)
+                Positioned(
+                  left: 20,
+                  top: 100,
+                  child: GestureDetector(
+                    onTap: () {
+                      if (!_isLoadingViewCount && (_viewsCount ?? 0) > 0) {
+                        context.toPage(
+                          StoryViewersScreen(
+                            storyId: current.id,
+                            storyTitle: S.of(context).storyViewsTitle,
                           ),
-                        ),
-                      );
-                    } catch (_) {
-                      if (mounted) {
-                        Navigator.of(context).pop();
-                        VAppAlert.showErrorSnackBar(
-                            context: context,
-                            message: 'Could not load post');
+                        );
                       }
-                    }
-                    if (mounted) controller.play();
-                  },
-                ),
-              ),
-            // Voice story player overlay (centered)
-            if (current.storyType == StoryType.voice &&
-                _voiceController != null)
-              Center(
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.35),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: VVoiceMessageView(
-                    controller: _voiceController!,
-                  ),
-                ),
-              ),
-            // Inline web video player overlay (web only)
-            // Wrapped in IgnorePointer to allow tap-to-skip gestures to pass through to StoryView
-            if (VPlatforms.isWeb &&
-                current.storyType == StoryType.video &&
-                _getCurrentVideoUrl() != null)
-              IgnorePointer(
-                child: Center(
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: _InlineWebVideoPlayer(
-                      key: ValueKey(current.id),
-                      url: _getCurrentVideoUrl()!,
-                    ),
-                  ),
-                ),
-              ),
-            Positioned(
-              top: 25,
-              left: 10,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                mainAxisSize: MainAxisSize.max,
-                children: [
-                  InkWell(
-                    onTap: () {
-                      context.pop();
                     },
-                    child: const Icon(
-                      Icons.arrow_back_ios,
-                      color: Colors.white,
-                    ),
-                  ),
-                  InkWell(
-                    onTap: () {
-                      if (_currentStoryModel.userData.isMe) return;
-                      context.toPage(
-                        PeerProfileView(peerId: _currentStoryModel.userData.id),
-                      );
-                    },
-                    child: Row(
-                      children: [
-                        const SizedBox(
-                          width: 10,
-                        ),
-                        VCircleAvatar(
-                          vFileSource: VPlatformFile.fromUrl(
-                            networkUrl: _currentStoryModel.userData.userImage,
-                          ),
-                          radius: 20,
-                        ),
-                        const SizedBox(
-                          width: 10,
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _currentStoryModel.userData.fullName.text.black
-                                .color(Colors.white),
-                            const SizedBox(
-                              height: 3,
-                            ),
-                            format(
-                              DateTime.parse(current.createdAt),
-                              locale:
-                                  Localizations.localeOf(context).languageCode,
-                            ).cap.color(Colors.white),
-                          ],
-                        )
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Show view count for own stories - positioned on left side
-            if (_currentStoryModel.userData.isMe)
-              Positioned(
-                left: 20,
-                top: 100,
-                child: GestureDetector(
-                  onTap: () {
-                    if (!_isLoadingViewCount && (_viewsCount ?? 0) > 0) {
-                      context.toPage(
-                        StoryViewersScreen(
-                          storyId: current.id,
-                          storyTitle: S.of(context).storyViewsTitle,
-                        ),
-                      );
-                    }
-                  },
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.visibility,
-                          color: Colors.white,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          _isLoadingViewCount
-                              ? "..."
-                              : S.of(context).viewsCount(_viewsCount ?? 0),
-                          style: const TextStyle(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.visibility,
                             color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
+                            size: 16,
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 6),
+                          Text(
+                            _isLoadingViewCount
+                                ? "..."
+                                : S.of(context).viewsCount(_viewsCount ?? 0),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            // Mute button for video stories - positioned on right side (not shown on web)
-            if (current.storyType == StoryType.video && !VPlatforms.isWeb)
+              // Mute button for video stories - positioned on right side (not shown on web)
+              if (current.storyType == StoryType.video && !VPlatforms.isWeb)
+                Positioned(
+                  right: 20,
+                  top: 100,
+                  child: GestureDetector(
+                    onTap: _toggleMute,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.5),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        _isMuted ? Icons.volume_off : Icons.volume_up,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                  ),
+                ),
               Positioned(
-                right: 20,
-                top: 100,
-                child: GestureDetector(
-                  onTap: _toggleMute,
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.5),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      _isMuted ? Icons.volume_off : Icons.volume_up,
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                  ),
-                ),
-              ),
-            Positioned(
-              right: 3,
-              top: 20,
-              child: InkWell(
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: PopupMenuButton<int>(
+                right: 3,
+                top: 20,
+                child: InkWell(
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: PopupMenuButton<int>(
                       icon: Icon(
                         Icons.more_vert_sharp,
                         size: 30,
@@ -911,113 +1171,115 @@ class _StoryViewpageState extends State<StoryViewpage> {
                   ),
                 ),
               ),
-            // Reaction and Reply UI (only for other people's stories)
-            if (!_currentStoryModel.userData.isMe)
-              Positioned(
-                bottom: 10, // Keep it at bottom with small margin
-                left: 10,
-                right: 10,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(25),
-                  ),
-                  child: Row(
-                    children: [
-                      // Emoji reaction button
-                      GestureDetector(
-                        onTap: _showEmojiReactionPicker,
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: _selectedEmoji != null
-                                ? Colors.white.withValues(alpha: 0.2)
-                                : Colors.transparent,
-                            shape: BoxShape.circle,
-                          ),
-                          child: _isReacting
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white),
-                                  ),
-                                )
-                              : _selectedEmoji != null
-                                  ? Text(
-                                      _selectedEmoji!,
-                                      style: const TextStyle(fontSize: 24),
-                                    )
-                                  : const Icon(
-                                      Icons.emoji_emotions_outlined,
-                                      color: Colors.white,
-                                      size: 24,
+              // Reaction and Reply UI (only for other people's stories)
+              if (!_currentStoryModel.userData.isMe)
+                Positioned(
+                  bottom: 10, // Keep it at bottom with small margin
+                  left: 10,
+                  right: 10,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(25),
+                    ),
+                    child: Row(
+                      children: [
+                        // Emoji reaction button
+                        GestureDetector(
+                          onTap: _showEmojiReactionPicker,
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: _selectedEmoji != null
+                                  ? Colors.white.withValues(alpha: 0.2)
+                                  : Colors.transparent,
+                              shape: BoxShape.circle,
+                            ),
+                            child: _isReacting
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                          Colors.white),
                                     ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      // Reply input field
-                      Expanded(
-                        child: TextField(
-                          controller: _replyController,
-                          focusNode: _replyFocusNode,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            hintText: S.of(context).replyToName(
-                                _currentStoryModel.userData.fullName),
-                            hintStyle: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.7)),
-                            border: InputBorder.none,
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 8),
+                                  )
+                                : _selectedEmoji != null
+                                    ? Text(
+                                        _selectedEmoji!,
+                                        style: const TextStyle(fontSize: 24),
+                                      )
+                                    : const Icon(
+                                        Icons.emoji_emotions_outlined,
+                                        color: Colors.white,
+                                        size: 24,
+                                      ),
                           ),
-                          onChanged: (_) {
-                            // Pause story immediately when user starts typing
-                            if (!_isTypingReply) {
-                              setState(() {
-                                _isTypingReply = true;
-                              });
-                              controller.pause();
-                              if (current.storyType == StoryType.voice) {
-                                _voiceController?.pausePlaying();
+                        ),
+                        const SizedBox(width: 8),
+                        // Reply input field
+                        Expanded(
+                          child: TextField(
+                            controller: _replyController,
+                            focusNode: _replyFocusNode,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: InputDecoration(
+                              hintText: S.of(context).replyToName(
+                                  _currentStoryModel.userData.fullName),
+                              hintStyle: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.7)),
+                              border: InputBorder.none,
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                            ),
+                            onChanged: (_) {
+                              // Pause story immediately when user starts typing
+                              if (!_isTypingReply) {
+                                setState(() {
+                                  _isTypingReply = true;
+                                });
+                                controller.pause();
+                                _pauseBgMusic();
+                                if (current.storyType == StoryType.voice) {
+                                  _voiceController?.pausePlaying();
+                                }
                               }
-                            }
-                          },
-                          onSubmitted: (_) => _replyToStory(),
+                            },
+                            onSubmitted: (_) => _replyToStory(),
+                          ),
                         ),
-                      ),
-                      // Send reply button
-                      GestureDetector(
-                        onTap: _replyToStory,
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          child: _isReplying
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white),
+                        // Send reply button
+                        GestureDetector(
+                          onTap: _replyToStory,
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            child: _isReplying
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                          Colors.white),
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.send,
+                                    color: Colors.white,
+                                    size: 24,
                                   ),
-                                )
-                              : const Icon(
-                                  Icons.send,
-                                  color: Colors.white,
-                                  size: 24,
-                                ),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1063,6 +1325,7 @@ class _StoryViewpageState extends State<StoryViewpage> {
 
     // Pause the story when reaction picker is shown
     controller.pause();
+    _pauseBgMusic();
 
     showDialog(
       context: context,
@@ -1072,13 +1335,15 @@ class _StoryViewpageState extends State<StoryViewpage> {
           onEmojiSelected: (emoji) {
             Navigator.of(context).pop();
             // Resume story after selecting emoji
-            controller.play();
+            _resumeBgMusic();
+            _playStoriesIfAllowed();
             _reactToStoryWithEmoji(emoji);
           },
           onCancel: () {
             Navigator.of(context).pop();
             // Resume story when canceling
-            controller.play();
+            _resumeBgMusic();
+            _playStoriesIfAllowed();
           },
         );
       },
@@ -1143,6 +1408,7 @@ class _StoryViewpageState extends State<StoryViewpage> {
         setState(() {
           _isMuted = true;
         });
+        _bgMusicPlayer?.setVolume(0.0);
         VAppAlert.showSuccessSnackBar(
           message: S.of(context).storyMuted,
           context: context,
@@ -1152,6 +1418,7 @@ class _StoryViewpageState extends State<StoryViewpage> {
         setState(() {
           _isMuted = false;
         });
+        _bgMusicPlayer?.setVolume(1.0);
         VAppAlert.showSuccessSnackBar(
           message: S.of(context).storyUnmuted,
           context: context,
@@ -1162,6 +1429,11 @@ class _StoryViewpageState extends State<StoryViewpage> {
       setState(() {
         _isMuted = !_isMuted;
       });
+      if (_isMuted) {
+        _bgMusicPlayer?.setVolume(0.0);
+      } else {
+        _bgMusicPlayer?.setVolume(1.0);
+      }
       VAppAlert.showSuccessSnackBar(
         message: _isMuted
             ? S.of(context).mutedVisualOnly
@@ -1234,13 +1506,14 @@ class _StoryViewpageState extends State<StoryViewpage> {
 
   Future<void> _parseStories() async {
     final built = <StoryItem>[];
+    unawaited(
+      StoryMediaCacheService.I.prefetchStoryMedia([_currentStoryModel]),
+    );
     for (final story in _currentStoryModel.stories) {
       if (story.storyType == StoryType.image) {
         final storyUrl = story.att!['url']!;
-        // Manually construct full URL since VPlatformFile returns relative path
-        final raw = storyUrl.toString();
         final fullNetworkUrl =
-            raw.startsWith('http') ? raw : '${SConstants.baseMediaUrl}$raw';
+            StoryMediaCacheService.I.resolveStoryUrl(storyUrl.toString());
 
         print('=== STORY IMAGE DEBUG ===');
         print('Story ID: ${story.id}');
@@ -1261,23 +1534,17 @@ class _StoryViewpageState extends State<StoryViewpage> {
 
       if (story.storyType == StoryType.video) {
         final rawUrl = story.att?['url']?.toString() ?? '';
-        final storyUrl = rawUrl;
-        // Normalize to absolute HTTPS URL for web/network playback
-        final fullNetworkUrl = storyUrl.startsWith('http')
-            ? storyUrl
-            : '${SConstants.baseMediaUrl}$storyUrl';
+        final fullNetworkUrl = StoryMediaCacheService.I.resolveStoryUrl(rawUrl);
 
         // Prefer a thumbnail for web placeholder if available
         final rawThumb = story.att?['thumbUrl']?.toString();
         final fullThumbUrl = (rawThumb != null && rawThumb.isNotEmpty)
-            ? (rawThumb.startsWith('http')
-                ? rawThumb
-                : '${SConstants.baseMediaUrl}$rawThumb')
+            ? StoryMediaCacheService.I.resolveStoryUrl(rawThumb)
             : null;
 
         print('=== STORY VIDEO DEBUG ===');
         print('Story ID: ${story.id}');
-        print('Original URL from backend: $storyUrl');
+        print('Original URL from backend: $rawUrl');
         print('Constructed full URL: $fullNetworkUrl');
         print('Thumb (raw): $rawThumb | full: ${fullThumbUrl ?? 'none'}');
         print('=========================');
@@ -1290,36 +1557,22 @@ class _StoryViewpageState extends State<StoryViewpage> {
             ? Duration(milliseconds: probedDurationMs)
             : const Duration(minutes: 10);
 
-        if (VPlatforms.isWeb) {
-          if (fullThumbUrl != null) {
-            // Show thumbnail as a page and overlay play button; external player handles playback
-            built.add(
-              StoryItem.pageImage(
-                url: fullThumbUrl,
-                controller: controller,
-                caption: null,
-                duration: videoDuration,
-              ),
-            );
-          } else {
-            // Fallback to a neutral page for web
-            built.add(
-              StoryItem.text(
-                title: '',
-                duration: videoDuration,
-                textStyle: const TextStyle(color: Colors.transparent),
-                backgroundColor: Colors.black,
-              ),
-            );
-          }
+        if (fullThumbUrl != null && fullThumbUrl.isNotEmpty) {
+          built.add(
+            StoryItem.pageImage(
+              url: fullThumbUrl,
+              controller: controller,
+              caption: null,
+              duration: videoDuration,
+            ),
+          );
         } else {
           built.add(
-            StoryItem.pageVideo(
-              fullNetworkUrl,
-              controller: controller,
-              caption:
-                  null, // Remove built-in caption, we'll use custom overlay
+            StoryItem.text(
+              title: '',
               duration: videoDuration,
+              textStyle: const TextStyle(color: Colors.transparent),
+              backgroundColor: Colors.black,
             ),
           );
         }
@@ -1364,6 +1617,7 @@ class _StoryViewpageState extends State<StoryViewpage> {
 
     if (_currentStoryModel.stories.isNotEmpty) {
       current = _currentStoryModel.stories.first;
+      _handleCurrentStoryChanged();
       Future.delayed(Duration.zero, () {
         if (!mounted) return;
         setState(() {
@@ -1376,6 +1630,7 @@ class _StoryViewpageState extends State<StoryViewpage> {
           _loadViewCount();
         }
         _checkExistingReaction();
+        _startBgMusicForCurrent();
       });
     }
   }
@@ -1388,6 +1643,7 @@ class _StoryViewpageState extends State<StoryViewpage> {
           _isTypingReply = true;
         });
         controller.pause();
+        _pauseBgMusic();
         // Pause voice playback if current is voice
         if (current.storyType == StoryType.voice) {
           _voiceController?.pausePlaying();
@@ -1400,11 +1656,12 @@ class _StoryViewpageState extends State<StoryViewpage> {
         setState(() {
           _isTypingReply = false;
         });
+        _resumeBgMusic();
         if (current.storyType == StoryType.voice) {
           _voiceController?.initAndPlay();
           controller.pause();
         } else {
-          controller.play();
+          _playStoriesIfAllowed();
         }
       }
     }
@@ -1453,16 +1710,24 @@ class _StoryViewpageState extends State<StoryViewpage> {
   }
 }
 
-class _InlineWebVideoPlayer extends StatefulWidget {
+class _InlineStoryVideoPlayer extends StatefulWidget {
   final String url;
+  final bool muted;
+  final VoidCallback? onReady;
 
-  const _InlineWebVideoPlayer({super.key, required this.url});
+  const _InlineStoryVideoPlayer({
+    super.key,
+    required this.url,
+    required this.muted,
+    this.onReady,
+  });
 
   @override
-  State<_InlineWebVideoPlayer> createState() => _InlineWebVideoPlayerState();
+  State<_InlineStoryVideoPlayer> createState() =>
+      _InlineStoryVideoPlayerState();
 }
 
-class _InlineWebVideoPlayerState extends State<_InlineWebVideoPlayer> {
+class _InlineStoryVideoPlayerState extends State<_InlineStoryVideoPlayer> {
   VideoPlayerController? _controller;
   bool _initialized = false;
 
@@ -1476,9 +1741,11 @@ class _InlineWebVideoPlayerState extends State<_InlineWebVideoPlayer> {
     try {
       final controller =
           VideoPlayerController.networkUrl(Uri.parse(widget.url));
-      await controller.initialize();
+      await controller.initialize().timeout(const Duration(seconds: 15));
       controller.setLooping(true);
+      await controller.setVolume(widget.muted ? 0 : 1);
       await controller.play();
+      widget.onReady?.call();
       if (mounted) {
         setState(() {
           _controller = controller;
@@ -1486,7 +1753,22 @@ class _InlineWebVideoPlayerState extends State<_InlineWebVideoPlayer> {
         });
       }
     } catch (_) {
-      // ignore web video init failures
+      // ignore inline video init failures
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _InlineStoryVideoPlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url) {
+      _controller?.dispose();
+      _controller = null;
+      _initialized = false;
+      _init();
+      return;
+    }
+    if (oldWidget.muted != widget.muted && _controller != null) {
+      _controller!.setVolume(widget.muted ? 0 : 1);
     }
   }
 
@@ -1513,7 +1795,6 @@ class _InlineWebVideoPlayerState extends State<_InlineWebVideoPlayer> {
   }
 }
 
-
 // ---------------------------------------------------------------------------
 // Post card shown over shared-post stories — tapping navigates to the post
 // ---------------------------------------------------------------------------
@@ -1535,7 +1816,8 @@ class _StoryPostCard extends StatelessWidget {
   String get _address => (att['address'] ?? '').toString();
   String get _latitude => (att['latitude'] ?? '').toString();
   String get _longitude => (att['longitude'] ?? '').toString();
-  String get _rawThumb => (att['thumbnailUrl'] ?? att['thumbUrl'] ?? att['url'] ?? '').toString();
+  String get _rawThumb =>
+      (att['thumbnailUrl'] ?? att['thumbUrl'] ?? att['url'] ?? '').toString();
   String get _rawMedia => (att['mediaUrl'] ?? '').toString();
 
   String _deriveCloudinaryThumb(String url) {
@@ -1546,16 +1828,21 @@ class _StoryPostCard extends StatelessWidget {
     const upload = '/upload/';
     final idx = path.indexOf(upload);
     if (idx == -1) return '';
-    final prefix = '${uri.scheme}://${uri.host}${path.substring(0, idx + upload.length)}';
-    final tail = path.substring(idx + upload.length).replaceFirst(RegExp(r'^/+'), '');
+    final prefix =
+        '${uri.scheme}://${uri.host}${path.substring(0, idx + upload.length)}';
+    final tail =
+        path.substring(idx + upload.length).replaceFirst(RegExp(r'^/+'), '');
     final jpgTail = tail.replaceFirst(RegExp(r'\.[^./]+$'), '.jpg');
     return '${prefix}so_1,w_640,h_360,c_fill,f_jpg/$jpgTail';
   }
 
   String get _displayThumb {
-    final thumb = _rawThumb.isNotEmpty ? _rawThumb : _deriveCloudinaryThumb(_rawMedia);
+    final thumb =
+        _rawThumb.isNotEmpty ? _rawThumb : _deriveCloudinaryThumb(_rawMedia);
     if (thumb.isEmpty) return '';
-    return thumb.startsWith('http') ? thumb : '${SConstants.baseMediaUrl}$thumb';
+    return thumb.startsWith('http')
+        ? thumb
+        : '${SConstants.baseMediaUrl}$thumb';
   }
 
   String get _cardCaption {
@@ -1584,10 +1871,10 @@ class _StoryPostCard extends StatelessWidget {
     final cardCaption = _cardCaption;
 
     final headerText = isLocation
-      ? 'Shared a Location'
-      : (isReel
-        ? 'Shared a Reel'
-        : (_postType == 'video' ? 'Shared a Video' : 'Shared a Post'));
+        ? 'Shared a Location'
+        : (isReel
+            ? 'Shared a Reel'
+            : (_postType == 'video' ? 'Shared a Video' : 'Shared a Post'));
 
     return GestureDetector(
       onTap: onTap,
@@ -1669,12 +1956,15 @@ class _StoryPostCard extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.location_on, color: Color(0xFFB48648), size: 18),
+                  const Icon(Icons.location_on,
+                      color: Color(0xFFB48648), size: 18),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       _placeName.isNotEmpty
-                          ? (_address.isNotEmpty ? '$_placeName, $_address' : _placeName)
+                          ? (_address.isNotEmpty
+                              ? '$_placeName, $_address'
+                              : _placeName)
                           : (_address.isNotEmpty
                               ? _address
                               : ((_latitude.isNotEmpty && _longitude.isNotEmpty)
@@ -1737,6 +2027,193 @@ class _StoryPostCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _StoryTicketCard extends StatelessWidget {
+  final Map<String, dynamic> att;
+  final VoidCallback onTap;
+
+  const _StoryTicketCard({
+    required this.att,
+    required this.onTap,
+  });
+
+  String get _name => (att['name'] ?? 'Ticket').toString();
+  String get _uploaderName => (att['uploaderName'] ?? '').toString();
+  String get _uploaderImage => (att['uploaderImage'] ?? '').toString();
+  String get _imageUrl => (att['imageUrl'] ?? '').toString();
+  bool get _hasImage => att['hasImage'] == true || _imageUrl.isNotEmpty;
+  double get _price => (att['priceKes'] ?? 0) is num ? (att['priceKes'] ?? 0).toDouble() : double.tryParse((att['priceKes'] ?? 0).toString()) ?? 0;
+  String get _category => (att['category'] ?? '').toString();
+  
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.65),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: const Color(0xFFB48648).withOpacity(0.6),
+            width: 1.2,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  CupertinoIcons.ticket,
+                  size: 14,
+                  color: Color(0xFFB48648),
+                ),
+                const SizedBox(width: 5),
+                const Text(
+                  'Shared a Ticket',
+                  style: TextStyle(
+                    color: Color(0xFFB48648),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
+                const Spacer(),
+                const Icon(
+                  Icons.open_in_new,
+                  size: 14,
+                  color: Colors.white54,
+                ),
+              ],
+            ),
+            if (_hasImage) ...[
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Stack(
+                  children: [
+                    Image.network(
+                      _imageUrl,
+                      width: double.infinity,
+                      height: 120,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        height: 120,
+                        color: const Color(0xFFB48648).withOpacity(0.15),
+                        child: const Center(
+                          child: Icon(Icons.image_not_supported,
+                              color: Color(0xFFB48648), size: 36),
+                        ),
+                      ),
+                    ),
+                    ImageFiltered(
+                      imageFilter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                      child: Image.network(
+                        _imageUrl,
+                        width: double.infinity,
+                        height: 120,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const SizedBox(),
+                      ),
+                    ),
+                    Container(
+                      width: double.infinity,
+                      height: 120,
+                      color: Colors.black.withOpacity(0.32),
+                      child: const Center(
+                        child: Icon(
+                          CupertinoIcons.lock,
+                          color: CupertinoColors.white,
+                          size: 30,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
+            Text(
+              _name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                _chip('KES ${_price.toStringAsFixed(0)}', CupertinoIcons.money_dollar),
+                if (_category.isNotEmpty) _chip(_category, CupertinoIcons.tag),
+              ],
+            ),
+            if (_uploaderName.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  if (_uploaderImage.isNotEmpty)
+                    CircleAvatar(
+                      radius: 13,
+                      backgroundImage: NetworkImage(
+                        _uploaderImage.startsWith('http')
+                            ? _uploaderImage
+                            : '${SConstants.baseMediaUrl}$_uploaderImage',
+                      ),
+                    )
+                  else
+                    const CircleAvatar(
+                      radius: 13,
+                      child: Icon(Icons.person, size: 16),
+                    ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      _uploaderName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _chip(String text, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: const Color(0xFFB48648)),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white),
+          ),
+        ],
       ),
     );
   }

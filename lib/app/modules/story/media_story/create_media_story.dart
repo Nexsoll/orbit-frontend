@@ -1,21 +1,27 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
+import 'package:image/image.dart' as img;
 import 'package:s_translation/generated/l10n.dart';
 import 'package:super_up_core/super_up_core.dart';
 import 'package:v_chat_media_editor/v_chat_media_editor.dart';
 import 'package:v_platform/v_platform.dart';
 import 'package:video_player/video_player.dart';
+import 'package:just_audio/just_audio.dart';
 
 import '../../../core/api_service/story/story_api_service.dart';
+import '../widgets/story_music_selection_sheet.dart';
 import '../../../core/models/story/create_story_dto.dart';
 import '../../../core/utils/enums.dart';
 import '../../../core/services/story_status_service.dart';
 import '../story_privacy/story_privacy_selection_screen.dart';
 import '../../social/controllers/social_story_tab_controller.dart';
+import '../widgets/status_ai_bottom_sheet.dart';
+import '../story_subscription/story_subscription_helper.dart';
 
 class CreateMediaStory extends StatefulWidget {
   final VBaseMediaRes media;
@@ -38,6 +44,9 @@ class _CreateMediaStoryState extends State<CreateMediaStory> {
   StoryPrivacy _storyPrivacy = StoryPrivacy.public;
   List<String>? _selectedUserIds;
   List<String>? _excludedUserIds;
+  
+  Map<String, dynamic>? _selectedBackgroundMusic;
+  AudioPlayer? _bgMusicPreviewPlayer;
 
   @override
   void initState() {
@@ -48,7 +57,60 @@ class _CreateMediaStoryState extends State<CreateMediaStory> {
   @override
   void dispose() {
     _videoController?.dispose();
+    _bgMusicPreviewPlayer?.dispose();
     super.dispose();
+  }
+
+  void _playBackgroundMusicPreview() async {
+    await _bgMusicPreviewPlayer?.dispose();
+    _bgMusicPreviewPlayer = null;
+
+    if (_selectedBackgroundMusic == null || !mounted) return;
+
+    final rawUrl = _selectedBackgroundMusic!['musicUrl']?.toString() ?? '';
+    if (rawUrl.isEmpty) return;
+
+    final fullUrl = rawUrl.startsWith('http') ? rawUrl : SConstants.baseMediaUrl + rawUrl;
+    final startMs = _selectedBackgroundMusic!['startMs'] as int? ?? 0;
+    final endMs = _selectedBackgroundMusic!['endMs'] as int? ?? (startMs + 15000);
+
+    if (_isVideo && _videoController != null) {
+      await _videoController!.setVolume(0.0);
+    }
+
+    try {
+      _bgMusicPreviewPlayer = AudioPlayer();
+      await _bgMusicPreviewPlayer!.setUrl(fullUrl);
+      await _bgMusicPreviewPlayer!.seek(Duration(milliseconds: startMs));
+      await _bgMusicPreviewPlayer!.play();
+
+      _bgMusicPreviewPlayer!.positionStream.listen((pos) {
+        if (!mounted || _selectedBackgroundMusic == null || _bgMusicPreviewPlayer == null) return;
+        if (pos.inMilliseconds >= endMs) {
+          _bgMusicPreviewPlayer!.seek(Duration(milliseconds: startMs));
+        }
+      });
+    } catch (_) {}
+  }
+
+  void _stopBackgroundMusicPreview() async {
+    await _bgMusicPreviewPlayer?.dispose();
+    _bgMusicPreviewPlayer = null;
+    if (_isVideo && _videoController != null) {
+      await _videoController!.setVolume(1.0);
+    }
+  }
+
+  void _selectBackgroundMusic() {
+    StoryMusicSelectionSheet.show(
+      context: context,
+      onSelected: (trimmedData) {
+        setState(() {
+          _selectedBackgroundMusic = trimmedData;
+        });
+        _playBackgroundMusicPreview();
+      },
+    );
   }
 
   void _initializeMedia() {
@@ -118,87 +180,204 @@ class _CreateMediaStoryState extends State<CreateMediaStory> {
               children: [
                 const SizedBox(),
                 _buildMediaWidget(),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: CupertinoTextField(
-                          placeholder: S.of(context).writeACaption,
-                          controller: _txtController,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          placeholderStyle: const TextStyle(
-                            color: Colors.white,
-                          ),
-                          decoration: const BoxDecoration(
-                            color: Colors.black,
-                            borderRadius: BorderRadius.all(
-                              Radius.circular(10),
+                if (_selectedBackgroundMusic != null)
+                  Container(
+                    margin: const EdgeInsets.only(left: 16, right: 16, top: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.6),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFB48648), width: 1),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          CupertinoIcons.music_note_2,
+                          color: Color(0xFFB48648),
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            '${_selectedBackgroundMusic!['title']} - ${_selectedBackgroundMusic!['artist']}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      // Privacy Button
-                      GestureDetector(
-                        onTap: _showPrivacySelection,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(20),
-                            color: Colors.blue.withOpacity(0.7),
-                            border: Border.all(color: Colors.white, width: 1),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                _storyPrivacy == StoryPrivacy.public
-                                    ? Icons.public
-                                    : _storyPrivacy == StoryPrivacy.somePeople
-                                        ? Icons.people
-                                        : Icons.people_alt_outlined,
-                                color: Colors.white,
-                                size: 16,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                _storyPrivacy == StoryPrivacy.public
-                                    ? 'Everyone'
-                                    : _storyPrivacy == StoryPrivacy.somePeople
-                                        ? 'Selected'
-                                        : 'Except',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      // Done Button
-                      GestureDetector(
-                        onTap: uploadMediaStory,
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.green,
-                          ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _selectedBackgroundMusic = null;
+                            });
+                            _stopBackgroundMusicPreview();
+                          },
                           child: const Icon(
-                            Icons.done,
-                            color: Colors.white,
-                            size: 20,
+                            CupertinoIcons.xmark_circle_fill,
+                            color: Colors.red,
+                            size: 18,
                           ),
                         ),
+                      ],
+                    ),
+                  ),
+                 Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CupertinoTextField(
+                        placeholder: S.of(context).writeACaption,
+                        controller: _txtController,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        placeholderStyle: const TextStyle(
+                          color: Colors.white,
+                        ),
+                        decoration: const BoxDecoration(
+                          color: Colors.black,
+                          borderRadius: BorderRadius.all(
+                            Radius.circular(10),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          // Privacy Button
+                          GestureDetector(
+                            onTap: _showPrivacySelection,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20),
+                                color: Colors.blue.withOpacity(0.7),
+                                border: Border.all(color: Colors.white, width: 1),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    _storyPrivacy == StoryPrivacy.public
+                                        ? Icons.public
+                                        : _storyPrivacy == StoryPrivacy.somePeople
+                                            ? Icons.people
+                                            : Icons.people_alt_outlined,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    _storyPrivacy == StoryPrivacy.public
+                                        ? 'Everyone'
+                                        : _storyPrivacy == StoryPrivacy.somePeople
+                                            ? 'Selected'
+                                            : 'Except',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          // AI Button
+                          GestureDetector(
+                            onTap: _showAiBottomSheet,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20),
+                                color: Colors.amber.withOpacity(0.8),
+                                border: Border.all(color: Colors.white, width: 1),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Image(
+                                    image: AssetImage('assets/ai-logo.png'),
+                                    width: 16,
+                                    height: 16,
+                                  ),
+                                  SizedBox(width: 6),
+                                  Text(
+                                    'AI',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          // Music Button
+                          GestureDetector(
+                            onTap: _selectBackgroundMusic,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20),
+                                color: _selectedBackgroundMusic != null
+                                    ? const Color(0xFFB48648)
+                                    : Colors.purple.withOpacity(0.7),
+                                border: Border.all(color: Colors.white, width: 1),
+                                // Limit width slightly to prevent overflow on very narrow devices
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    CupertinoIcons.music_note_2,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  const Text(
+                                    'Music',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          // Done Button
+                          GestureDetector(
+                            onTap: uploadMediaStory,
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.green,
+                              ),
+                              child: const Icon(
+                                Icons.done,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -298,6 +477,32 @@ class _CreateMediaStoryState extends State<CreateMediaStory> {
     );
   }
 
+  void _showAiBottomSheet() {
+    VPlatformFile? aiMediaFile;
+    if (_isVideo) {
+      aiMediaFile =
+          (widget.media as VMediaVideoRes).data.thumbImage?.fileSource;
+    } else {
+      aiMediaFile = widget.media.getVPlatformFile();
+    }
+
+    StatusAiBottomSheet.show(
+      context,
+      storyType: _isVideo ? StoryType.video : StoryType.image,
+      initialText: _txtController.text.isNotEmpty ? _txtController.text : null,
+      mediaFile: aiMediaFile,
+      onSuggestionSelected: (suggestion) {
+        setState(() {
+          if (_txtController.text.isNotEmpty) {
+            _txtController.text = '${_txtController.text} $suggestion';
+          } else {
+            _txtController.text = suggestion;
+          }
+        });
+      },
+    );
+  }
+
   void uploadMediaStory() async {
     // Debug: Print the story data being sent
     print('Creating media story with privacy: $_storyPrivacy');
@@ -314,6 +519,10 @@ class _CreateMediaStoryState extends State<CreateMediaStory> {
       },
       request: () async {
         final storyType = _isVideo ? StoryType.video : StoryType.image;
+        final uploadMedia = await _prepareUploadFile(
+          widget.media.getVPlatformFile(),
+          isVideo: _isVideo,
+        );
 
         Map<String, dynamic>? attachment;
         if (_isVideo) {
@@ -337,11 +546,18 @@ class _CreateMediaStoryState extends State<CreateMediaStory> {
           attachment = (widget.media as VMediaImageRes).data.toMap();
         }
 
+        if (_selectedBackgroundMusic != null) {
+          attachment = {
+            ...?attachment,
+            'backgroundMusic': _selectedBackgroundMusic,
+          };
+        }
+
         final dto = CreateStoryDto(
           storyType: storyType,
           content: storyType.name,
           caption: _txtController.text,
-          image: widget.media.getVPlatformFile(),
+          image: uploadMedia,
           secondImage: _isVideo
               ? (widget.media as VMediaVideoRes).data.thumbImage?.fileSource
               : null,
@@ -378,11 +594,62 @@ class _CreateMediaStoryState extends State<CreateMediaStory> {
       },
       onError: (exception, trace) {
         context.pop();
-        VAppAlert.showErrorSnackBar(
-          context: context,
-          message: exception.toString(),
-        );
+        final msg = exception.toString();
+        if (StorySubscriptionHelper.openIfRequired(context, msg)) return;
+        VAppAlert.showErrorSnackBar(context: context, message: msg);
       },
     );
+  }
+
+  Future<VPlatformFile> _prepareUploadFile(
+    VPlatformFile source, {
+    required bool isVideo,
+  }) async {
+    // Video compression is done server-side for now to avoid device-heavy transcode work.
+    if (isVideo || VPlatforms.isWeb) return source;
+
+    final localPath = source.fileLocalPath;
+    if (localPath == null || localPath.isEmpty) return source;
+
+    try {
+      final file = File(localPath);
+      if (!await file.exists()) return source;
+
+      final originalBytes = await file.readAsBytes();
+      final decoded = img.decodeImage(originalBytes);
+      if (decoded == null) return source;
+
+      const maxWidth = 1080;
+      const maxHeight = 1920;
+      final scale = math.min(
+        1.0,
+        math.min(
+          maxWidth / decoded.width,
+          maxHeight / decoded.height,
+        ),
+      );
+
+      final resized = scale < 1.0
+          ? img.copyResize(
+              decoded,
+              width: (decoded.width * scale).round(),
+              height: (decoded.height * scale).round(),
+              interpolation: img.Interpolation.average,
+            )
+          : decoded;
+
+      final compressedBytes = img.encodeJpg(resized, quality: 82);
+      if (compressedBytes.length >= originalBytes.length) {
+        return source;
+      }
+
+      final tempDir = await Directory.systemTemp.createTemp('story_img_');
+      final outPath =
+          '${tempDir.path}/story_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      await File(outPath).writeAsBytes(compressedBytes, flush: true);
+      return VPlatformFile.fromPath(fileLocalPath: outPath);
+    } catch (_) {
+      return source;
+    }
   }
 }

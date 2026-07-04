@@ -182,6 +182,8 @@ PODS:
     - Flutter
   - flutter_fgbg (0.0.1):
     - Flutter
+  - flutter_foreground_task (0.0.1):
+    - Flutter
   - flutter_image_compress_common (1.0.0):
     - Flutter
     - Mantle
@@ -194,6 +196,8 @@ PODS:
   - flutter_native_video_trimmer (1.0.0):
     - Flutter
   - flutter_ringtone_player (0.0.1):
+    - Flutter
+  - flutter_screen_recording (0.0.1):
     - Flutter
   - flutter_vlc_player (3.0.3):
     - Flutter
@@ -412,11 +416,13 @@ DEPENDENCIES:
   - flutter_callkit_incoming (from `.symlinks/plugins/flutter_callkit_incoming/ios`)
   - flutter_contacts (from `.symlinks/plugins/flutter_contacts/ios`)
   - flutter_fgbg (from `.symlinks/plugins/flutter_fgbg/ios`)
+  - flutter_foreground_task (from `.symlinks/plugins/flutter_foreground_task/ios`)
   - flutter_image_compress_common (from `.symlinks/plugins/flutter_image_compress_common/ios`)
   - flutter_local_notifications (from `.symlinks/plugins/flutter_local_notifications/ios`)
   - flutter_native_splash (from `.symlinks/plugins/flutter_native_splash/ios`)
   - flutter_native_video_trimmer (from `.symlinks/plugins/flutter_native_video_trimmer/ios`)
   - flutter_ringtone_player (from `.symlinks/plugins/flutter_ringtone_player/ios`)
+  - flutter_screen_recording (from `.symlinks/plugins/flutter_screen_recording/ios`)
   - flutter_vlc_player (from `.symlinks/plugins/flutter_vlc_player/ios`)
   - flutter_volume_controller (from `.symlinks/plugins/flutter_volume_controller/ios`)
   - gal (from `.symlinks/plugins/gal/darwin`)
@@ -547,6 +553,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/flutter_contacts/ios"
   flutter_fgbg:
     :path: ".symlinks/plugins/flutter_fgbg/ios"
+  flutter_foreground_task:
+    :path: ".symlinks/plugins/flutter_foreground_task/ios"
   flutter_image_compress_common:
     :path: ".symlinks/plugins/flutter_image_compress_common/ios"
   flutter_local_notifications:
@@ -557,6 +565,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/flutter_native_video_trimmer/ios"
   flutter_ringtone_player:
     :path: ".symlinks/plugins/flutter_ringtone_player/ios"
+  flutter_screen_recording:
+    :path: ".symlinks/plugins/flutter_screen_recording/ios"
   flutter_vlc_player:
     :path: ".symlinks/plugins/flutter_vlc_player/ios"
   flutter_volume_controller:
@@ -672,11 +682,13 @@ SPEC CHECKSUMS:
   flutter_callkit_incoming: cb8138af67cda6dd981f7101a5d709003af21502
   flutter_contacts: 5383945387e7ca37cf963d4be57c21f2fc15ca9f
   flutter_fgbg: d3da78df78454b1808f0829a5da9cd17dfe16444
+  flutter_foreground_task: a159d2c2173b33699ddb3e6c2a067045d7cebb89
   flutter_image_compress_common: 1697a328fd72bfb335507c6bca1a65fa5ad87df1
   flutter_local_notifications: 395056b3175ba4f08480a7c5de30cd36d69827e4
   flutter_native_splash: c32d145d68aeda5502d5f543ee38c192065986cf
   flutter_native_video_trimmer: 11f6c679971dc3844519b485b9c878df8675ae3a
   flutter_ringtone_player: a77c42464250845611eaa44c27e8714acc800138
+  flutter_screen_recording: d27b9073d122b618a07ef0e407470d051b265b26
   flutter_vlc_player: 5464f594a9338e080d240bbe7b10ffe30c7bc8bc
   flutter_volume_controller: c2be490cb0487e8b88d0d9fc2b7e1c139a4ebccb
   gal: baecd024ebfd13c441269ca7404792a7152fde89

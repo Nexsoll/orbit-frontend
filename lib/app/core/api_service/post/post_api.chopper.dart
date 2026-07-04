@@ -24,6 +24,7 @@ final class _$PostApi extends PostApi {
     int limit = 20,
     String? postType,
     String? hashtag,
+    String? search,
   }) {
     final Uri $url = Uri.parse('/posts/');
     final Map<String, dynamic> $params = <String, dynamic>{
@@ -31,6 +32,7 @@ final class _$PostApi extends PostApi {
       'limit': limit,
       'postType': postType,
       'hashtag': hashtag,
+      'search': search,
     };
     final Request $request = Request(
       'GET',

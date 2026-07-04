@@ -43,6 +43,71 @@ class _PeerProfileViewState extends State<PeerProfileView> {
     super.dispose();
   }
 
+  Future<void> _showPrivacyMessage(String message) {
+    return showCupertinoDialog(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: const Text('Private'),
+        content: Text(message),
+        actions: [
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openFollowList({required bool isFollowersTab}) {
+    final profile = controller.data;
+    if (profile == null) return;
+
+    final hiddenByPrivacy = isFollowersTab
+        ? profile.userPrivacy.hideFollowers
+        : profile.userPrivacy.hideFollowing;
+    final canView = isFollowersTab
+        ? profile.canViewFollowers
+        : profile.canViewFollowing;
+    final listName = isFollowersTab ? 'followers' : 'following';
+
+    if (hiddenByPrivacy) {
+      _showPrivacyMessage('This user has hidden their $listName list.');
+      return;
+    }
+
+    if (!canView) {
+      _showPrivacyMessage('Follow first to view $listName.');
+      return;
+    }
+
+    context.toPage(
+      FollowUsersPage(
+        userId: profile.searchUser.baseUser.id,
+        isFollowersTab: isFollowersTab,
+      ),
+    );
+  }
+
+  void _openGallery() {
+    final profile = controller.data;
+    if (profile == null) return;
+
+    if (!profile.canViewGallery) {
+      _showPrivacyMessage('Follow first to view gallery.');
+      return;
+    }
+
+    context.toPage(
+      UserMusicGalleryView(
+        userId: profile.searchUser.baseUser.id,
+        userName: profile.searchUser.baseUser.fullName,
+        userImage: profile.searchUser.baseUser.userImage,
+      ),
+    );
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -92,8 +157,8 @@ class _PeerProfileViewState extends State<PeerProfileView> {
                             child: Text(
                               controller.data!.searchUser.profession!.trim(),
                               textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: CupertinoColors.systemGrey,
+                              style: TextStyle(
+                                color: CupertinoColors.systemGrey.resolveFrom(context),
                                 fontSize: 14,
                               ),
                             ),
@@ -115,8 +180,8 @@ class _PeerProfileViewState extends State<PeerProfileView> {
                                 },
                                 child: Text(
                                   controller.data!.searchUser.phoneNumber!,
-                                  style: const TextStyle(
-                                    color: CupertinoColors.black,
+                                  style: TextStyle(
+                                    color: CupertinoColors.label.resolveFrom(context),
                                     fontSize: 16,
                                   ),
                                 ),
@@ -140,14 +205,7 @@ class _PeerProfileViewState extends State<PeerProfileView> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             GestureDetector(
-                              onTap: () {
-                                context.toPage(
-                                  FollowUsersPage(
-                                    userId: controller.data!.searchUser.baseUser.id,
-                                    isFollowersTab: true,
-                                  ),
-                                );
-                              },
+                              onTap: () => _openFollowList(isFollowersTab: true),
                               child: Text(
                                 '${controller.data!.followersCount} ${S.of(context).followersLabel}',
                                 style: const TextStyle(
@@ -158,14 +216,7 @@ class _PeerProfileViewState extends State<PeerProfileView> {
                             ),
                             const SizedBox(width: 12),
                             GestureDetector(
-                              onTap: () {
-                                context.toPage(
-                                  FollowUsersPage(
-                                    userId: controller.data!.searchUser.baseUser.id,
-                                    isFollowersTab: false,
-                                  ),
-                                );
-                              },
+                              onTap: () => _openFollowList(isFollowersTab: false),
                               child: Text(
                                 '${controller.data!.followingCount} following',
                                 style: const TextStyle(
@@ -243,7 +294,6 @@ class _PeerProfileViewState extends State<PeerProfileView> {
                             )
                           ],
                         ),
-                        // Music Gallery Button - TikTok Style
                         CupertinoListSection.insetGrouped(
                           hasLeading: false,
                           margin: const EdgeInsets.all(10),
@@ -281,15 +331,7 @@ class _PeerProfileViewState extends State<PeerProfileView> {
                                   ),
                                 ],
                               ),
-                              onTap: () {
-                                context.toPage(
-                                  UserMusicGalleryView(
-                                    userId: controller.data!.searchUser.baseUser.id,
-                                    userName: controller.data!.searchUser.baseUser.fullName,
-                                    userImage: controller.data!.searchUser.baseUser.userImage,
-                                  ),
-                                );
-                              },
+                              onTap: _openGallery,
                             ),
                           ],
                         ),

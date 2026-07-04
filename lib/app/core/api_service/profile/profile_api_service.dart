@@ -221,6 +221,12 @@ class ProfileApiService {
     return true;
   }
 
+  Future<bool> updateDateOfBirth(String dateOfBirth) async {
+    final res = await _profileApi!.updateDateOfBirth({"dateOfBirth": dateOfBirth});
+    throwIfNotSuccess(res);
+    return true;
+  }
+
   Future<bool> updateLocation(
       {required double latitude, required double longitude}) async {
     try {
@@ -541,7 +547,7 @@ class ProfileApiService {
     log('------you base url ----- ${baseUrl}');
     _profileApi ??= ProfileApi.create(
       accessToken: accessToken,
-      baseUrl: baseUrl ?? SConstants.sApiBaseUrl,
+      baseUrl: baseUrl,
     );
     return ProfileApiService._();
   }

@@ -4,13 +4,20 @@ import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:super_up_core/super_up_core.dart';
 import 'package:v_chat_sdk_core/v_chat_sdk_core.dart';
 import 'package:v_platform/v_platform.dart';
 
 import '../services/tickets_api_service.dart';
 import 'create_ticket_view.dart';
+import 'ticket_detail_view.dart';
 import '../../../core/services/balance_service.dart';
+import '../../../core/api_service/story/story_api_service.dart';
+import '../../../core/models/story/create_story_dto.dart';
+import '../../../core/services/story_status_service.dart';
+import '../../../core/utils/enums.dart';
+import '../../home/mobile/story_tab/controllers/story_tab_controller.dart';
 
 class TicketsHomeView extends StatefulWidget {
   const TicketsHomeView({super.key});
@@ -188,6 +195,200 @@ class _TicketsHomeViewState extends State<TicketsHomeView> {
     }
   }
 
+  Future<void> _openShareOptions(Map<String, dynamic> t) async {
+    String? action;
+    await showCupertinoModalPopup<void>(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: Text((t['name'] ?? 'Ticket').toString()),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () {
+              action = 'story';
+              Navigator.pop(context);
+            },
+            child: const Text('Share to Story'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              action = 'chat';
+              Navigator.pop(context);
+            },
+            child: const Text('Share to Chat'),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              action = 'link';
+              Navigator.pop(context);
+            },
+            child: const Text('Share Link'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
+
+    if (action == 'story') return _shareTicketToStory(t);
+    if (action == 'chat') return _shareTicketToChat(t);
+    if (action == 'link') return _shareTicketLink(t);
+  }
+
+  Future<void> _shareTicketToStory(Map<String, dynamic> t) async {
+    try {
+      final id = (t['_id'] ?? t['id'])?.toString() ?? '';
+      final name = (t['name'] ?? 'Ticket').toString();
+      if (id.isEmpty) return;
+
+      VAppAlert.showLoading(context: context);
+
+      final dto = CreateStoryDto(
+        image: null,
+        storyType: StoryType.text,
+        content: name,
+        caption: name,
+        backgroundColor: 'FF000000',
+        attachment: {
+          'ticketId': id,
+          '_id': id,
+          'name': name,
+          'priceKes': t['priceKes'],
+          'category': t['category'],
+          'expiryDate': t['expiryDate']?.toString(),
+          'imageUrl': t['imageUrl'],
+          'imageBlurred': true,
+          'hasImage': t['hasImage'] ?? (t['imageUrl'] ?? '').toString().isNotEmpty,
+          'isSold': t['isSold'],
+          'remaining': t['remaining'],
+          'uploaderId': t['uploaderId']?.toString(),
+          'uploaderName': t['uploaderName'],
+          'uploaderImage': t['uploaderImage'],
+        },
+        storyPrivacy: StoryPrivacy.public,
+        storySource: 'main',
+      );
+
+      if (!GetIt.I.isRegistered<StoryApiService>()) {
+        GetIt.I.registerSingleton<StoryApiService>(StoryApiService.init());
+      }
+      await GetIt.I.get<StoryApiService>().createStory(dto);
+
+      try {
+        final svc = GetIt.I.get<StoryStatusService>();
+        if (GetIt.I.isRegistered<StoryTabController>()) {
+          final tab = GetIt.I.get<StoryTabController>();
+          await svc.refreshMyStories();
+          await tab.getMyStoryFromApi();
+          await tab.getStoriesFromApi();
+          tab.update();
+        }
+      } catch (_) {}
+
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      VAppAlert.showSuccessSnackBar(
+        context: context,
+        message: 'Shared to your story',
+      );
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context).pop();
+        VAppAlert.showErrorSnackBar(context: context, message: e.toString());
+      }
+    }
+  }
+
+  Future<void> _shareTicketLink(Map<String, dynamic> t) async {
+    try {
+      final id = (t['_id'] ?? t['id'])?.toString() ?? '';
+      if (id.isEmpty) return;
+
+      final name = (t['name'] ?? 'Ticket').toString();
+      final uploaderName = (t['uploaderName'] ?? '').toString();
+      final link = 'https://api.orbit.ke/api/v1/public/tickets/share/$id';
+      final text = [
+        name,
+        if (uploaderName.isNotEmpty) 'by $uploaderName',
+        'Use the Orbit app or web to buy this ticket.',
+        link,
+      ].join('\n');
+
+      await Share.share(text, subject: name);
+    } catch (e) {
+      if (mounted) {
+        VAppAlert.showErrorSnackBar(context: context, message: e.toString());
+      }
+    }
+  }
+
+  Future<void> _shareTicketToChat(Map<String, dynamic> t) async {
+    try {
+      final roomsIds =
+          await VChatController.I.vNavigator.roomNavigator.toForwardPage(
+        context,
+        null,
+      );
+      if (roomsIds == null || roomsIds.isEmpty) return;
+
+      final id = (t['_id'] ?? t['id'])?.toString() ?? '';
+      final name = (t['name'] ?? 'Ticket').toString();
+      if (id.isEmpty) return;
+
+      final payload = <String, dynamic>{
+        'type': 'ticket_share',
+        'ticketId': id,
+        '_id': id,
+        'name': name,
+        'priceKes': t['priceKes'],
+        'category': t['category'],
+        'expiryDate': t['expiryDate']?.toString(),
+        'imageUrl': t['imageUrl'],
+        'imageBlurred':
+            t['hasImage'] == true || (t['imageUrl'] ?? '').toString().isNotEmpty,
+        'hasImage': t['hasImage'],
+        'isSold': t['isSold'],
+        'remaining': t['remaining'],
+        'uploaderId': t['uploaderId']?.toString(),
+        'uploaderName': t['uploaderName'],
+        'uploaderImage': t['uploaderImage'],
+      };
+
+      VAppAlert.showLoading(context: context);
+      try {
+        for (final roomId in roomsIds) {
+          final message = VCustomMessage.buildMessage(
+            roomId: roomId,
+            content: 'Shared ticket: $name',
+            data: VCustomMsgData(data: payload),
+          );
+          await VChatController.I.nativeApi.local.message
+              .insertMessage(message);
+          try {
+            VMessageUploaderQueue.instance.addToQueue(
+              await MessageFactory.createUploadMessage(message),
+            );
+          } catch (_) {}
+        }
+        if (!mounted) return;
+        Navigator.of(context).pop();
+        VAppAlert.showSuccessSnackBar(
+          context: context,
+          message: 'Shared to chat',
+        );
+      } catch (e) {
+        if (!mounted) return;
+        Navigator.of(context).pop();
+        VAppAlert.showErrorSnackBar(context: context, message: e.toString());
+      }
+    } catch (e) {
+      if (mounted) {
+        VAppAlert.showErrorSnackBar(context: context, message: e.toString());
+      }
+    }
+  }
+
   Future<void> _openChat(Map<String, dynamic> t) async {
     final uploaderId = (t['uploaderId'] ?? '').toString();
     if (uploaderId.isEmpty) {
@@ -315,7 +516,7 @@ class _TicketsHomeViewState extends State<TicketsHomeView> {
                           final uploaderName = (t['uploaderName'] ?? '').toString();
                           final imageUrl = (t['imageUrl'] ?? '').toString();
                           final hasImage = t['hasImage'] == true || imageUrl.isNotEmpty;
-                          final imageBlurred = t['imageBlurred'] == true;
+                          final imageBlurred = t['imageBlurred'] == true || !isOwner;
 
                           return Card(
                             margin: const EdgeInsets.symmetric(
@@ -422,7 +623,7 @@ class _TicketsHomeViewState extends State<TicketsHomeView> {
                                   ),
                                   if (hasImage) ...[
                                     const SizedBox(height: 12),
-                                    _buildTicketImage(imageUrl, imageBlurred, isSold),
+                                    _buildTicketImage(imageUrl, imageBlurred, isSold, t),
                                   ],
                                   const SizedBox(height: 8),
                                   Wrap(
@@ -464,19 +665,37 @@ class _TicketsHomeViewState extends State<TicketsHomeView> {
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.end,
                                     children: [
+                                      CupertinoButton(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 8,
+                                        ),
+                                        color: Colors.black.withOpacity(0.05),
+                                        minSize: 30,
+                                        onPressed: () => _openShareOptions(t),
+                                        child: const Icon(
+                                          CupertinoIcons.share,
+                                          size: 18,
+                                          color: _brand,
+                                        ),
+                                      ),
                                       if (!isOwner || isBuyer)
-                                        CupertinoButton(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 10,
-                                            vertical: 8,
-                                          ),
-                                          color: Colors.black.withOpacity(0.05),
-                                          minSize: 30,
-                                          onPressed: () => _openChat(t),
-                                          child: const Icon(
-                                            CupertinoIcons.chat_bubble_2,
-                                            size: 18,
-                                            color: _brand,
+                                        Padding(
+                                          padding:
+                                              const EdgeInsets.only(left: 8),
+                                          child: CupertinoButton(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 10,
+                                              vertical: 8,
+                                            ),
+                                            color: Colors.black.withOpacity(0.05),
+                                            minSize: 30,
+                                            onPressed: () => _openChat(t),
+                                            child: const Icon(
+                                              CupertinoIcons.chat_bubble_2,
+                                              size: 18,
+                                              color: _brand,
+                                            ),
                                           ),
                                         ),
                                       if (isOwner) ...[
@@ -534,7 +753,7 @@ class _TicketsHomeViewState extends State<TicketsHomeView> {
     );
   }
 
-  Widget _buildTicketImage(String imageUrl, bool blurred, bool isSold) {
+  Widget _buildTicketImage(String imageUrl, bool blurred, bool isSold, Map<String, dynamic> ticket) {
     Widget imageWidget = ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: Stack(
@@ -588,15 +807,22 @@ class _TicketsHomeViewState extends State<TicketsHomeView> {
       ),
     );
 
-    // Allow tap to view full image when not blurred
-    if (!blurred) {
-      return GestureDetector(
-        onTap: () => _openFullImage(imageUrl),
-        child: imageWidget,
-      );
-    }
-
-    return imageWidget;
+    return GestureDetector(
+      onTap: () async {
+        final res = await Navigator.of(context).push(
+          CupertinoPageRoute(
+            builder: (context) => TicketDetailView(
+              ticketId: (ticket['_id'] ?? ticket['id'])?.toString() ?? '',
+              initialTicket: ticket,
+            ),
+          ),
+        );
+        if (res == true) {
+          _fetch(reset: true);
+        }
+      },
+      child: imageWidget,
+    );
   }
 
   void _openFullImage(String imageUrl) {

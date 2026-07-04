@@ -72,7 +72,9 @@ class _MyPrivacyPageState extends State<MyPrivacyPage> {
                   SettingsListItemTile(
                     color: Colors.purple,
                     title: 'Read receipts',
-                    subtitle: 'Keep messages marked as delivered unless you send read receipts'.text,
+                    subtitle:
+                        'Keep messages marked as delivered unless you send read receipts'
+                            .text,
                     icon: CupertinoIcons.check_mark_circled_solid,
                     trailing: CupertinoSwitch(
                       value: _userPrivacy.readReceipts,
@@ -81,8 +83,18 @@ class _MyPrivacyPageState extends State<MyPrivacyPage> {
                   ),
                   SettingsListItemTile(
                     color: Colors.deepPurple,
-                    title: 'Hide followers/following lists',
-                    subtitle: 'Others cannot view your followers and following lists'.text,
+                    title: 'Hide followers list',
+                    subtitle: 'Others cannot view your followers list'.text,
+                    icon: CupertinoIcons.eye_slash,
+                    trailing: CupertinoSwitch(
+                      value: _userPrivacy.hideFollowers,
+                      onChanged: _onUpdateHideFollowers,
+                    ),
+                  ),
+                  SettingsListItemTile(
+                    color: Colors.deepPurple,
+                    title: 'Hide following list',
+                    subtitle: 'Others cannot view your following list'.text,
                     icon: CupertinoIcons.eye_slash,
                     trailing: CupertinoSwitch(
                       value: _userPrivacy.hideFollowing,
@@ -90,9 +102,23 @@ class _MyPrivacyPageState extends State<MyPrivacyPage> {
                     ),
                   ),
                   SettingsListItemTile(
+                    color: Colors.deepPurple,
+                    title: 'Hide both lists',
+                    subtitle:
+                        'Others cannot view your followers or following lists'
+                            .text,
+                    icon: CupertinoIcons.eye_slash_fill,
+                    trailing: CupertinoSwitch(
+                      value: _userPrivacy.hideFollowers &&
+                          _userPrivacy.hideFollowing,
+                      onChanged: _onUpdateHideBothFollowLists,
+                    ),
+                  ),
+                  SettingsListItemTile(
                     color: Colors.indigo,
                     title: 'Who can add me to groups',
-                    subtitle: (_userPrivacy.groupAddPermission == UserPrivacyType.public
+                    subtitle: (_userPrivacy.groupAddPermission ==
+                                UserPrivacyType.public
                             ? 'Everyone'
                             : 'By request')
                         .text,
@@ -115,8 +141,19 @@ class _MyPrivacyPageState extends State<MyPrivacyPage> {
                     subtitle: _getTrans(_userPrivacy.showStory).text,
                     onTap: _onUpdateShowStory,
                     icon: Icons.history_toggle_off_rounded,
-                  )
-                  ,
+                  ),
+                  SettingsListItemTile(
+                    color: Colors.cyan,
+                    title: 'Allow screenshots in story',
+                    subtitle:
+                        'Others can take screenshots while viewing your stories'
+                            .text,
+                    icon: Icons.camera_alt_outlined,
+                    trailing: CupertinoSwitch(
+                      value: _userPrivacy.allowStoryScreenshot,
+                      onChanged: _onUpdateAllowStoryScreenshot,
+                    ),
+                  ),
                   SettingsListItemTile(
                     color: Colors.teal,
                     title: 'Who cannot view my profile photo',
@@ -135,8 +172,6 @@ class _MyPrivacyPageState extends State<MyPrivacyPage> {
       ),
     );
   }
-
-  
 
   Future<void> _onChooseCallBlockedUsers() async {
     final selectedUsers = await Navigator.of(context).push<List<SBaseUser>>(
@@ -206,8 +241,26 @@ class _MyPrivacyPageState extends State<MyPrivacyPage> {
     await _updateLocalProfile();
   }
 
+  Future<void> _onUpdateHideFollowers(bool value) async {
+    _userPrivacy = _userPrivacy.copyWith(hideFollowers: value);
+    await _updateLocalProfile();
+  }
+
   Future<void> _onUpdateHideFollowing(bool value) async {
     _userPrivacy = _userPrivacy.copyWith(hideFollowing: value);
+    await _updateLocalProfile();
+  }
+
+  Future<void> _onUpdateHideBothFollowLists(bool value) async {
+    _userPrivacy = _userPrivacy.copyWith(
+      hideFollowers: value,
+      hideFollowing: value,
+    );
+    await _updateLocalProfile();
+  }
+
+  Future<void> _onUpdateAllowStoryScreenshot(bool value) async {
+    _userPrivacy = _userPrivacy.copyWith(allowStoryScreenshot: value);
     await _updateLocalProfile();
   }
 
